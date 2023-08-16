@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            margin: 0px;
+            overflow: hidden;
+            background-color: white;
+        }
+
+        .process-warning {
+            display: inline-block;
+            background-color: rgb(250, 250, 250);
+            border: 1px solid gray;
+            border-radius: 5px;
+            box-shadow: 1px 2px 5px rgba(0, 0, 0, 0.5);
+            margin: 8px;
+            padding: 5px;
+            font-size: 14px;
+        }
+    </style>
+
+    <!-- CONSOLE STYLE -->
+    <style>
+        #live-output-container {
+            font-family: Consolas, monospace;
+            font-size: 14px;
+            border: none;
+            overflow: auto;
+            font-size: 14px;
+        }
+
+        .log-item {
+            padding: 5px;
+            border-bottom: 1px solid rgb(240, 240, 240);
+        }
+    </style>
+
+    <script src="https://cdn.jsdelivr.net/gh/WebAssembly/wabt/docs/demo/libwabt.js"></script>
+</head>
+<body>
+    
+    <!-- Live Output -->
+    <div id="live-output-container"></div>
+
+    <!-- Live Output Control Script -->
+    <script>
+var liveOutputContainer = document.getElementById("live-output-container");
+
+var blobFiles = [];
+
+// store the console element
+var consoleEl = document.getElementById("live-output-container");
+
+// console functions
+function println(that, val) {
+    var el = document.createElement("div");
+    el.style.whiteSpace = "pre";
+    el.className = "log-item";
+    el.innerText = val === undefined ? that : val;
+
+    consoleEl.appendChild(el);
+}
+
+function debug(val, scope) {
+    var el = document.createElement("div");
+    el.className = "log-item";
+    el.style.backgroundColor = "rgb(255, 251, 229)";
+    el.style.color = "rgb(92, 60, 0)";
+    el.style.whiteSpace = "pre";
+    el.innerText = val;
+
+    if (scope) {
+        var locEl = document.createElement("span");
+        locEl.style.color = "rgb(0, 105, 185)";
+        locEl.innerText = "\n@" + scope;
+        el.appendChild(locEl);
+    }
+
+    consoleEl.appendChild(el);
+}
+
+function throwError(val, scope, code) {
+    var el = document.createElement("div");
+    el.className = "log-item";
+    el.style.backgroundColor = "rgb(255, 240, 240)";
+    el.style.color = "rgb(196, 43, 28)";
+    el.style.whiteSpace = "pre";
+    el.innerText = val;
+
+    if (scope) {
+        var locEl = document.createElement("span");
+        locEl.style.color = "rgb(0, 105, 185)";
+        locEl.innerText = "\n@" + code + ";\n@" + scope;
+        el.appendChild(locEl);
+    }
+
+    consoleEl.appendChild(el);
+}
+
+var wasmBuff = null;
+
+window.addEventListener("message", function (event) {
+    var data = JSON.parse(event.data);
+    var files = data.files;
+
+    var mainCode = files["main.c"].data;
+
+    consoleEl.style.width = data.width + "px";
+    consoleEl.style.height = data.height + "px";
+    consoleEl.innerHTML = "";
+    
+    // lets light this candle
+    let responseRecieved = false;
+    setTimeout(function () {
+        debug("Compiling...");
+        
+        fetch("https://academy.vexcess.repl.co/API/compile_c", {
+            method: "POST",
+            body: mainCode
+        }).then(res => res.text()).then(res => {
+            responseRecieved = true;
+
+            console.log(res)
+9888888
+            let wat = res
+                .replace("(table 0 anyfunc)", '')
+                .replace('(memory $0 1)', '(import "env" "memory" (memory $js.mem 1))')
+                .replace('(export "memory" (memory $0))', '')
+                .split("\n").filter(a => a.trim().length > 0).join("\n")
+
+            console.log(wat);
+
+            var features = {
+                'exceptions': false,
+                'mutable_globals': false,
+                'sat_float_to_int': false,
+                'sign_extension': false,
+                'simd': false,
+                'threads': false,
+                'multi_value': false,
+                'tail_call': false,
+                'bulk_memory': false,
+                'reference_types': false,
+            };
+            
+            WabtModule().then(wabt => {
+                let module;
+                try {
+                    module = wabt.parseWat('main.wat', wat, features);
+                    module.resolveNames();
+                    module.validate(features);
+                    wasmBuff = module.toBinary({
+                        log: false, 
+                        write_debug_names: false
+                    }).buffer;
+                } catch (e) {
+                    throwError(e);
+                    console.error(e);
+                } finally {
+                    if (module) {
+                        module.destroy();
+                    }
+                }
+                
+                if (wasmBuff) {
+                    window.memory = new WebAssembly.Memory({initial : 1});
+                    let importObject = {
+                        env: {
+                            memory: memory,
+                            printf: function (a, b, c) {
+                                if (b !== undefined) {
+                                    var bytes = new Uint8Array(memory.buffer, a, b);
+                                    var string = new TextDecoder('utf8').decode(bytes);
+                                    console.log(string);
+                                    println(string);
+                                } else {
+                                    console.log(a);
+                                    println(a);
+                                }
+                            }
+                        }
+                    };
+
+                    try {
+                        var wasmModule = new WebAssembly.Module(wasmBuff);
+                        var wasmInstance = new WebAssembly.Instance(wasmModule, importObject);
+    
+                        console.log(wasmInstance)
+                        
+                        debug("process exited with code " + wasmInstance.exports.main());
+                    } catch (e) {
+                        throwError(e);
+                        console.error(e);
+                    }
+                } else {
+                    throwError("An error occured while compiling wat to wasm");
+                    console.error("An error occured while compiling wat to wasm");
+                }
+            });
+        });
+    }, 250);
+
+});
+    </script>
+    
+</body>
+</html>
