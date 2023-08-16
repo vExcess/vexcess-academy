@@ -12,11 +12,11 @@ For the code editor to work you will also need to run the execution environment 
 You'll then need to change the URL in `src/pages/computer-programming/program.js` to use your localhost URL instead of the official one.  
 
 ## Contributors
-[VExcess](https://github.com/vExcess) - I wrote nearly all the code
-[WKoA](https://github.com/Reginald-Gillespie) - Helped find bugs and vulnerabilities
-[Archbirdplus](https://github.com/archbirdplus) - Helped find bugs and vulnerabilities
-[Dat](https://github.com/Dddatt) - Wrote the WebGL tutorial
-[WalkWorthy](https://github.com/RandomLegoBrick) - Created the Java runtime iso
-[Shipment](https://github.com/Shipment22) - Helped with CSS & Father of the Bobert avatar
-[CylenceScythe](https://www.khanacademy.org/profile/SharleyBoo) - Created Pyro avatar graphics
-[Leslie](https://www.khanacademy.org/profile/ForeverFrostine) - Created Floof avatar graphics
+[VExcess](https://github.com/vExcess) - I wrote nearly all the code  
+[WKoA](https://github.com/Reginald-Gillespie) - Helped find bugs and vulnerabilities  
+[Archbirdplus](https://github.com/archbirdplus) - Helped find bugs and vulnerabilities  
+[Dat](https://github.com/Dddatt) - Wrote the WebGL tutorial  
+[WalkWorthy](https://github.com/RandomLegoBrick) - Created the Java runtime iso  
+[Shipment](https://github.com/Shipment22) - Helped with CSS & Father of the Bobert avatar  
+[CylenceScythe](https://www.khanacademy.org/profile/SharleyBoo) - Created Pyro avatar graphics  
+[Leslie](https://www.khanacademy.org/profile/ForeverFrostine) - Created Floof avatar graphics  
