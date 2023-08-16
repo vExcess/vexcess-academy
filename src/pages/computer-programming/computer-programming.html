@@ -1,0 +1,63 @@
+<link rel="stylesheet" href="/CDN/pages/computer-programming/computer-programming.css" type="text/css">
+
+<div id="page-middle-container">
+
+    <h2>Computer Programming</h2>
+
+    <p>
+        These programming courses aim to teach a person who has no programming 
+        experience to be able to create complex programs. The recommended place
+        to start for beginners is the "Introduction to JavaScript" course.
+    </p>
+
+    <script>
+        const pageBody = $("#page-middle-container")
+        
+        const COURSES = [
+            {
+                title: "JavaScript & Programming Fundamentals",
+                endpoint: "javascript",
+                about: "A course that teaches JavaScript and the fundamentals of computer programming starting from scratch and builds up to advanced programming concepts",
+                sections: [
+                    "What Is Programming",
+                    "What Is JavaScript"
+                ]
+            },
+            {
+                title: "WebGL",
+                endpoint: "webgl",
+                about: "WebGL is an JavaScript API that uses OpenGL use render GPU-accelerated graphics in a web browser",
+                sections: [
+                    "WebGL"
+                ]
+            },
+        ];
+        
+        $.createComponent("course", $.html`
+            <div class="course-div">
+                <h3>\{title}</h3>
+                <p>\{about}</p>
+            </div>
+        `, function(course) {
+            const sections = course.sections;
+            for (let i = 0; i < sections.length; i++) {
+                const UrlName = sections[i].toLowerCase().split(" ").join("-");
+                $("a")
+                    .text(sections[i])
+                    .attr({
+                        href: `/computer-programming/${course.endpoint}#0-0`,
+                        target: "_self"
+                    })
+                    .appendTo(this)
+                this.append($("div").css("height: 8px;"))
+            }
+        })
+
+        COURSES.forEach(course => {
+            $("course", course).appendTo(pageBody)
+        })
+
+        // https://github.com/Dddatt
+    </script>
+    
+</div>

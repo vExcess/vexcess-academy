@@ -1,0 +1,32 @@
+#page-flex {
+    padding: 20px;
+    display: flex;
+    width: calc(100% - 30px);
+}
+
+.section-div {
+    background-color: rgb(253, 253, 253);
+    border: 2px solid rgb(235, 235, 235);
+    border-radius: 5px;
+    padding: 14px;
+    margin-bottom: 28px;
+    width: 230px;
+}
+
+.lesson-link {
+    color: rgb(67, 110, 189);
+    text-decoration: none;
+    cursor: pointer;
+}
+.lesson-link:hover {
+    text-decoration: underline;
+}
+
+#right {
+    padding-left: 30px;
+    padding-right: 30px;
+    font-size: 16px;
+    overflow: auto;
+    height: calc(100vh - 185px);
+    scroll-behavior: smooth;
+}

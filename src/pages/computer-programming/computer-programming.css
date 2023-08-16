@@ -1,0 +1,15 @@
+/* Main Page */
+#page-middle-container {
+    padding: 20px;
+    margin: auto;
+    max-width: 80%;
+}
+
+.course-div {
+    background-color: rgb(253, 253, 253);
+    border: 2px solid rgb(235, 235, 235);
+    border-radius: 5px;
+    padding: 16px;
+    padding-top: 6px;
+    margin-bottom: 25px;
+}
