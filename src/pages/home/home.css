@@ -9,8 +9,8 @@
 #program-showcase {
     width: 672px;
     margin: auto;
-    background-color: rgb(253, 253, 253);
-    border: 2px solid rgb(235, 235, 235);
+    background-color: var(--background2);
+    border: 2px solid var(--borders2);
     border-radius: 5px;
     display: flex;
     flex-wrap: wrap;
@@ -20,8 +20,8 @@
 .program-display-box {
     overflow: hidden;
     width: 150px;
-    border: 1px solid gray;
-    border-radius: 2px;
+    border: 1px solid var(--borders3);
+    border-radius: 15px;
     margin: 8px;
     padding-bottom: 8px;
     cursor: pointer;
@@ -29,7 +29,11 @@
     font-size: 14px;
     font-weight: bold;
     text-decoration: none;
-    color: black;
+    color: var(--text-color);
+}
+.program-display-box:hover {
+    background-color: var(--transparent-background);
+    transition: background-color 0.2s ease-in-out;
 }
 
 .lang-logo {
@@ -81,7 +85,7 @@ td {
     max-height: 0px;
     overflow: hidden;
     transition: max-height 0.2s ease-out;
-    background-color: #f1f1f1;
+    background-color: var(--background2);
 }
 
 table {
@@ -91,11 +95,11 @@ table {
 }
 
 td, th {
-    border: 1px solid rgb(160, 160, 160);
+    border: 1px solid var(--borders4);
     text-align: left;
     padding: 8px;
 }
 
 tr:nth-child(even) {
-    background-color: #dddddd;
+    background-color: var(--background3);
 }

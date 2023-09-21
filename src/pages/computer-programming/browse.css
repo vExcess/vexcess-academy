@@ -2,9 +2,6 @@ html, body {
     background: var(--background);
     color: var(--text-color);
 }
-* {
-    box-sizing: border-box;
-}
 
 #page-middle-container {
     width: 90%;
@@ -13,47 +10,8 @@ html, body {
     padding: .6rem;
 }
 
-/* program grid */
-.programs-grid {
-    display: grid;
-    justify-content: center;
-    grid-template-columns: repeat(auto-fill, 225px);
-    gap: 1rem;
-}
-.program-link {
-    display: block;
-    color: var(--text-color);
-    text-decoration: none;
-}
-.program {
-    border: 2px solid var(--borders);
-    border-radius: 6px;
-    padding: .5rem;
-    background-color: var(--surface);
-    text-align: center;
-    overflow: hidden;
-}
-.program_thumbnail {
-    width: 100%;
-    height: auto;
-    border-radius: .25rem;
-}
-.program_title {
-    margin: 0px;
-    margin-bottom: 6px;
-    color: black;
-    text-align: center;
-    font-family: sans-serif;
-    font-weight: bold;
-    overflow: hidden;
-    white-space: nowrap;
-}
-.program_metadata-wrapper {
-    text-align: left;
-    padding: 2px;
-}
-.thumbnail-img {
-    margin-bottom: 4px;
+#page-middle-container * {
+    box-sizing: border-box;
 }
 
 .list-tab-btn {

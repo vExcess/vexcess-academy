@@ -121,11 +121,12 @@
         <span class="tab-tab">About</span>
         <span class="tab-tab">Forks</span>
         <span class="tab-tab">Documentation</span>
-        <span class="tab-tab">Guidelines</span>
+        <span class="tab-tab">Help</span>
     </div>
     <div id="tab-content">
         <!-- ABOUT TAB -->
         <div class="tab-page" id="about-tab">
+            <h3 id="forked-from"></h3>
             <h3 id="program-author"></h3>
             <span id="program-hidden"></span>
             <span id="program-created"></span>
@@ -134,7 +135,19 @@
 
         <!-- FORKS TAB -->
         <div class="tab-page" id="forks-tab">
-            This program currently has no forks.
+            <h1 style="margin-top: 32px;">Forks</h1>
+            <div style="margin-top: -40px; text-align: right;">
+                <span class="list-tab-btn" id="top-btn">Top</span>
+                <span class="list-tab-btn" id="recent-btn">Recent</span>
+            </div>
+
+            <div style="height: 2px; background-color: rgb(200, 200, 200); margin-bottom: 20px;  margin-top: 20px;"></div>
+            
+            <div id="forks-grid" class="programs-grid"><h3>This program currently has no forks.</h3></div>
+
+            <br><br>
+            <button id="load-more-forks-btn" class="button" style="display: block; margin: auto;">Load More Projects</button>
+            <br><br>
         </div>
 
         <!-- DOCS TAB -->
@@ -142,9 +155,133 @@
             
         </div>
 
-        <!-- GUIDELINES TAB -->
-        <div class="tab-page" id="guidelines-tab">
-              <a href="/tos.html"></a>
+        <!-- HELP TAB -->
+        <div class="tab-page" id="help-tab">
+            <h2>What can I not do?</h2>
+            <div>
+                <a href="/tos">Terms of Service & Community Rules</a>
+            </div>
+            <br><br>
+
+            <h2>What is this?</h2>
+            <div>
+                This is VExcess Academy's IDE (integrated development environment) for programming.
+                <br>
+                Go here to learn programming: <a href="/computer-programming">Computer Programming</a>
+            </div>
+            <br><br>
+
+            <h2>Other Editor Stuff</h2>
+            <div>
+                Click the plus button to create a new file.
+                <br>
+                Click the "X" button to delete a file.
+                <br>
+                Double click on an editor tab to rename the file.
+            </div>
+            <br><br>
+            
+            <h2>Editor Shortcuts</h2>
+            <div>There are plenty of shortcuts that the editor supports, but here are the most commonly used ones.</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Shortcut</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>CTRL + Z</td>
+                        <td>undo</td>
+                    </tr>
+                    <tr>
+                        <td>CTRL + Y</td>
+                        <td>redo</td>
+                    </tr>
+                    <tr>
+                        <td>CTRL + C</td>
+                        <td>copy</td>
+                    </tr>
+                    <tr>
+                        <td>CTRL + X</td>
+                        <td>cut</td>
+                    </tr>
+                    <tr>
+                        <td>CTRL + V</td>
+                        <td>paste</td>
+                    </tr>
+                    <tr>
+                        <td>CTRL + A</td>
+                        <td>select all</td>
+                    </tr>
+                    <tr>
+                        <td>CTRL + F</td>
+                        <td>search</td>
+                    </tr>
+                    <tr>
+                        <td>CTRL + H</td>
+                        <td>search & replace</td>
+                    </tr>
+                    <tr>
+                        <td>CTRL + S</td>
+                        <td>save</td>
+                    </tr>
+                    <tr>
+                        <td>CTRL + ENTER</td>
+                        <td>run code</td>
+                    </tr>
+                    <tr>
+                        <td>CTRL + /</td>
+                        <td>toggle line comment</td>
+                    </tr>
+                    <tr>
+                        <td>TAB</td>
+                        <td>increase indent</td>
+                    </tr>
+                    <tr>
+                        <td>SHIFT + TAB</td>
+                        <td>decrease indent</td>
+                    </tr>
+                    <tr>
+                        <td>SHIFT + LEFT</td>
+                        <td>select left</td>
+                    </tr>
+                    <tr>
+                        <td>SHIFT + RIGHT</td>
+                        <td>select right</td>
+                    </tr>
+                    <tr>
+                        <td>SHIFT + UP</td>
+                        <td>select up</td>
+                    </tr>
+                    <tr>
+                        <td>SHIFT + DOWN</td>
+                        <td>select down</td>
+                    </tr>
+                    <tr>
+                        <td>CTRL + ALT + UP</td>
+                        <td>add multi-cursor above</td>
+                    </tr>
+                    <tr>
+                        <td>CTRL + ALT + DOWN</td>
+                        <td>add multi-cursor below</td>
+                    </tr>
+                    <tr>
+                        <td>ESC</td>
+                        <td>collape multi-cursors</td>
+                    </tr>
+                    <tr>
+                        <td>ALT + UP</td>
+                        <td>move line up</td>
+                    </tr>
+                    <tr>
+                        <td>ALT + DOWN</td>
+                        <td>move line down</td>
+                    </tr>
+                    
+                </tbody>
+            </table>
         </div>
     </div>
 </div>

@@ -5,8 +5,8 @@
 }
 
 .section-div {
-    background-color: rgb(253, 253, 253);
-    border: 2px solid rgb(235, 235, 235);
+    background-color: var(--background2);
+    border: 2px solid var(--borders2);
     border-radius: 5px;
     padding: 14px;
     margin-bottom: 28px;
@@ -14,7 +14,7 @@
 }
 
 .lesson-link {
-    color: rgb(67, 110, 189);
+    color: var(--link-color);
     text-decoration: none;
     cursor: pointer;
 }

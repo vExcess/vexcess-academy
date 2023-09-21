@@ -6,15 +6,34 @@ console.log("Program Initiated!");
 const SERVER_DOWN = false;
 
 // import dependencies
-const http = require("http");
+const http = require("https");
 const fs = require("fs");
 const crypto = require("node:crypto");
 const Crypto_AES = require("crypto-js/aes");
 const Crypto_SHA256 = require("crypto-js/sha256");
 const Crypto_Base64 = require("crypto-js/enc-base64");
 const Crypto_Utf8 = require("crypto-js/enc-utf8");
-const Database = require("@replit/database");
+const Database = class {
+    #data;
+    constructor() {
+        this.#data = JSON.parse(fs.readFileSync("../temp-db.json").toString());
+    }
+    get(key) {
+        return this.#data[key];
+    }
+    set(key, val) {
+        this.#data[key] = val;
+        fs.writeFile("../temp-db.json", JSON.stringify(this.#data), err => {
+            console.log("ERR temp db", key, val)
+        });
+    }
+};
 const db = new Database();
+
+// it'd be very bad if these were publicly available
+const secrets = require("../secrets");
+process.env.MASTER_KEY = secrets.MASTER_KEY;
+process.env.RECAPTCHA_KEY = secrets.RECAPTCHA_KEY;
 
 function SHA256(str) {
     return Crypto_Base64.stringify(Crypto_SHA256(str));
@@ -34,8 +53,6 @@ function AES_decrypt(ctxt, key) {
         salt: ctxt[2]
     }, key));
 }
-
-// db.list().then(console.log)
 
 // some constants
 const dontEscapeChars = " !#$%&'()*+,-./0123456789:;=?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~";
@@ -186,7 +203,15 @@ function validateProgramData(data) {
             return e + "invalid project type";
         }
 
+        // validate forks
+        if (data.parent && data.parent !== null && typeof data.parent !== "string") {
+            return e + "invalid parent";
+        }
+
         // limit size
+        if (data.width % 1 !== 0 || data.height % 1 !== 0) {
+            return e + "project dimensions must be integers";
+        }
         if (data.width < 400 || data.height < 400) {
             return e + "project dimensions can't be less than 400";
         }
@@ -543,14 +568,14 @@ function updateProjectLists() {
                             recentListData = allPrograms.slice();
                             topListData = allPrograms.slice();
 
-                            hotListData.sort((a, b) => calculateHotness(b.likes.length, b.created) - calculateHotness(a.likes.length, a.created));
+                            hotListData.sort((a, b) => calculateHotness(b.likes.length + b.forks.length * 2, b.created) - calculateHotness(a.likes.length + a.forks.length * 2, a.created));
                             recentListData.sort((a, b) => b.created - a.created);
                             topListData.sort((a, b) => b.likes.length - a.likes.length);
                         }
 
                         // For Manually Editing All Program Database
                         // let programData = parseJSON(data);
-                        // delete programData.isFork;
+                        // programData.parent = null;
                         // fs.writeFileSync(path, JSON.stringify(programData));
                     });
                 }
@@ -946,12 +971,22 @@ const projectTree = {
                         id: data.userData.id,
                         nickname: data.userData.nickname
                     },
+                    parent: json.parent ?? null,
                     img: json.img
                 };
 
                 // validate input
                 var programCheck = validateProgramData(programData);
                 if (programCheck !== "OK") creationError = programCheck;
+
+                // check if parent exists
+                if (programData.parent !== null && programData.parent.length > 0) {
+                    // parent directory path
+                    let parentDir = "./programs/" + programData.parent[0].toUpperCase() + "/" + programData.parent;
+    
+                    // check if dir exists
+                    if (!fs.existsSync(parentDir)) creationError = "error: parent non-existent";
+                }
 
                 if (!creationError) {
                     let directory;
@@ -963,6 +998,29 @@ const projectTree = {
                     } while (fs.existsSync(directory)); // check if program already exists
 
                     programData.id = programId;
+
+                    // update parent forks array
+                    if (programData.parent !== null && programData.parent.length > 0) {
+                        // parent directory path
+                        let parentDir = "./programs/" + programData.parent[0].toUpperCase() + "/" + programData.parent;
+        
+                        // check if dir exists
+                        if (!fs.existsSync(parentDir)) creationError = "error: parent non-existent";
+    
+                        if (!creationError) {
+                            let parentData = readJSON(parentDir + "/a.json");
+                            parentData.forks.push({
+                                id: programData.id,
+                                created: programData.created,
+                                likeCount: programData.likes.length
+                            });
+                            fs.writeFile(
+                                parentDir + "/a.json",
+                                JSON.stringify(parentData),
+                                () => { }
+                            );
+                        }
+                    }
 
                     // add program to user's profile
                     var authorIdStr = programData.author.id.toString();
@@ -1088,13 +1146,19 @@ const projectTree = {
             "delete_program": (path, out, data) => {
                 // delete program endpoint
                 let dirLoc = `./programs/${data.postData.charAt(0).toUpperCase()}/${data.postData}`;
+                let programData = readJSON(dirLoc + "/a.json");
 
                 // check if has permission to delete data
                 try {
-                    if (readJSON(dirLoc + "/a.json").author.id !== data.userData.id) {
+                    if (programData.author.id !== data.userData.id) {
                         data.hasPermission = false;
                     }
                 } catch (e) {
+                    out.write("error: error while deleting program");
+                    return;
+                }
+
+                if (programData === null) {
                     out.write("error: error while deleting program");
                     return;
                 }
@@ -1105,6 +1169,25 @@ const projectTree = {
                 }
 
                 if (fs.existsSync(dirLoc)) {
+                    // remove from parent forks array
+                    if (programData.parent !== null && programData.parent.length > 0) {
+                        // parent directory path
+                        let parentDir = "./programs/" + programData.parent[0].toUpperCase() + "/" + programData.parent;
+                        
+                        let parentData = readJSON(parentDir + "/a.json");
+                        if (parentData !== null) {
+                            let idx = parentData.forks.indexOf(programData.id);
+                            if (idx !== -1) {
+                                parentData.forks.splice(idx, 1);
+                                fs.writeFile(
+                                    parentDir + "/a.json",
+                                    JSON.stringify(parentData),
+                                    () => { }
+                                );
+                            }
+                        }
+                    }
+                    
                     // remove program from user's profile
                     var authorIdStr = data.userData.id.toString();
                     var authorProfDir = `./profiles/${authorIdStr.charAt(0).toUpperCase()}/${authorIdStr}.json`;
@@ -1134,15 +1217,39 @@ const projectTree = {
 
                 let programDataLoc = `./programs/${data.postData.charAt(0).toUpperCase()}/${data.postData}/a.json`;
                 try {
+                    // get program data
                     let programData = readJSON(programDataLoc);
 
+                    // update program data
                     if (!programData.likes.includes(data.userData.id)) {
                         programData.likes.push(data.userData.id);
                     } else {
                         programData.likes.splice(programData.likes.indexOf(data.userData.id), 1);
                     }
 
+                    // save program data
                     fs.writeFileSync(programDataLoc, JSON.stringify(programData));
+
+                    // update parent forks array
+                    if (programData.parent !== null && programData.parent.length > 0) {
+                        // parent directory path
+                        let parentDir = "./programs/" + programData.parent[0].toUpperCase() + "/" + programData.parent;
+        
+                        if (fs.existsSync(parentDir)) {
+                            let parentData = readJSON(parentDir + "/a.json");
+                            for (let i = 0; i < parentData.forks.length; i++) {
+                                let fork = parentData.forks[i];
+                                if (fork.id === programData.id) {
+                                    fork.likeCount = programData.likes.length;
+                                }
+                            }
+                            fs.writeFile(
+                                parentDir + "/a.json",
+                                JSON.stringify(parentData),
+                                () => { }
+                            );
+                        }
+                    }
                     out.write("200");
                     return;
                 } catch (e) {
@@ -1163,7 +1270,7 @@ const projectTree = {
                     return;
                 }
 
-                const validAvatars = ["bobert-approved","bobert-chad","bobert-cringe","bobert-flexing","bobert-hacker","bobert-high","bobert-troll-nose","bobert-troll","bobert-wide","bobert","rock-thonk","floof1","floof2","floof3","floof4","floof5","pyro1","pyro2","pyro3","pyro4","pyro5"];
+                const validAvatars = ["bobert-cool","bobert-pixelated","boberta","bobert-approved","bobert-chad","bobert-cringe","bobert-flexing","bobert-hacker","bobert-high","bobert-troll-nose","bobert-troll","bobert-wide","bobert","rock-thonk","floof1","floof2","floof3","floof4","floof5","pyro1","pyro2","pyro3","pyro4","pyro5"];
                 const validBackgrounds = ["blue","cosmos","electric-blue","fbm","fractal-1","green","julia-rainbow","julia","magenta","photon-1","photon-2","transparent"];
                 
                 // validate input
@@ -1220,22 +1327,30 @@ const projectTree = {
 
                 out.write("OK");
             },
-            "compile_c": async (path, out, data) => {
-                let input = encodeURIComponent(data.postData);
+            "compile_cpp": async (path, out, data) => {
+                let escapedCode = encodeURIComponent(data.postData);
                 let res = await fetch("https://wasmexplorer-service.herokuapp.com/service.php", {
-                    "method": "POST",
                     "headers": {
-                        "content-type": "application/x-www-form-urlencoded"
+                    "accept": "*/*",
+                    "accept-language": "en-US,en;q=0.9",
+                    "content-type": "application/x-www-form-urlencoded",
+                    "prefer": "safe",
+                    "sec-ch-ua": "\"Chromium\";v=\"116\", \"Not)A;Brand\";v=\"24\", \"Microsoft Edge\";v=\"116\"",
+                    "sec-ch-ua-mobile": "?0",
+                    "sec-ch-ua-platform": "\"Windows\"",
+                    "sec-fetch-dest": "empty",
+                    "sec-fetch-mode": "cors",
+                    "sec-fetch-site": "cross-site"
                     },
-                    "body": "input=" + input + "&action=c2wast&version=1&options=-O3%20-std%3DC99"
+                    "referrer": "https://mbebenita.github.io/",
+                    "referrerPolicy": "strict-origin-when-cross-origin",
+                    "body": "input=" + escapedCode + "&action=cpp2wast&options=-std%3Dc%2B%2B11%20-Os",
+                    "method": "POST",
+                    "mode": "cors",
+                    "credentials": "omit"
                 });
                 let body = await res.text();
                 out.write(body);
-            },
-        },
-        ":GET:": {
-            ":ACTION": (path, out, data) => {
-                out.writeHead(200, { "Content-Type": "application/json" });
             },
             "sign_out": async (path, out, data) => {
                 // sign out endpoint
@@ -1269,6 +1384,11 @@ const projectTree = {
                 );
 
                 out.write("OK");
+            },
+        },
+        ":GET:": {
+            ":ACTION": (path, out, data) => {
+                out.writeHead(200, { "Content-Type": "application/json" });
             },
             "projects?": (path, out, data) => {
                 let query = parseQuery("?" + path);
@@ -1416,7 +1536,7 @@ async function useTree(path, tree, data, response) {
     return status;
 }
 
-const server = http.createServer(async (request, response) => {
+const server = http.createServer({key: secrets.key, cert: secrets.cert}, async (request, response) => {
     // For when I'm editing the source code
     if (SERVER_DOWN) {
         response.write("Server down for maintenance");

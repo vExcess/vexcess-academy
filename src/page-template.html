@@ -14,12 +14,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Arimo&display=swap" rel="stylesheet">
         
-    <!-- Page Styling -->    
+    <!-- Page Styling -->
     <link rel="stylesheet" href="/CDN/page-template.css" type="text/css">
 
     <!-- import Barbequery -->
     <script src="/CDN/lib/barbequery.js"></script>
+
+    <!-- import components -->
+    <script src="/CDN/page-template-components.js"></script>
 
     <!-- to diplay loading icons -->
     <script src="/CDN/lib/loader-icon.js"></script>
@@ -88,7 +92,9 @@
 
             // log out
             profileMenuEls[3].on("click", () => {
-                fetch("/API/sign_out").then(res => res.text()).then(res => {
+                fetch("/API/sign_out", {
+                    method: "POST"
+                }).then(res => res.text()).then(res => {
                     if (res === "OK") {
                         document.cookie = 'token=; max-age=-1000; Secure; path=/';
                         window.location.reload();
@@ -151,37 +157,6 @@ topContainer.$("*div")[0].on("click", function () {
     dropDownMenuOpen = !dropDownMenuOpen;
 });
 
-topContainer.on("mouseover", function () {
-    topContainer.style.backgroundColor = "rgb(245, 245, 245)";
-    topContainer.style.borderBottom = "1px solid rgb(215, 215, 215)";
-    topContainer.style.color = "rgb(0, 50, 0)";
-    
-    searchBar.style.backgroundColor = "rgb(210, 210, 210)";
-    searchBarInput.style.color = "rgb(55, 55, 55)";
-    searchBarInput.style.setProperty("--c", "rgba(0, 0, 0, 0.6)");
-
-    let navBarSvgs = topContainer.$("*svg");
-    navBarSvgs[0].$("*path")[0].style.fill = "rgb(0, 50, 0)";
-    navBarSvgs[2].$("*path")[0].style.fill = "rgb(0, 50, 0)";
-    
-    magnifyingGlassSVG.$("*path")[0].style.fill = "rgb(140, 140, 140)";
-});
-
-topContainer.on("mouseleave", function () {
-    topContainer.style.backgroundColor = "rgb(31, 171, 84)";
-    topContainer.style.borderBottom = "1px solid rgb(99, 196, 136)";
-    topContainer.style.color = "white";
-    
-    searchBar.style.backgroundColor = "rgb(57, 182, 93)";
-    searchBarInput.style.color = "rgba(255, 255, 255, 0.9)";
-    searchBarInput.style.setProperty("--c", "rgba(255, 255, 255, 0.8)");
-
-    let navBarSvgs = topContainer.$("*svg");
-    navBarSvgs[0].$("*path")[0].style.fill = "rgb(138, 211, 166)";
-    navBarSvgs[2].$("*path")[0].style.fill = "rgb(138, 211, 166)";
-    
-    magnifyingGlassSVG.$("*path")[0].style.fill = "white";
-});
         </script>
     </div>
 

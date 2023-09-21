@@ -83,6 +83,8 @@ loadIcon.css({
 });
 editorContainer.append(loadIcon);
 
+const localStorageKey = "cs-new-program-" + (userData === null ? "null" : userData.id) + "-" + programData.type;
+
 let expectingSave = false;
 function saveProgram() {
     programData.files[currFileName] = editor.getValue();
@@ -104,27 +106,55 @@ function saveProgram() {
     if (programData.id) {
         saveButtonEL.$("*span")[0].text("Saving...");
         saveButtonEL.disabled = true;
+
+        if (programData.author.id === userData.id) {
+            // saves
+            fetch("/API/save_program", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    id: programData.id,
+                    title: programData.title,
+                    width: editorSettings.width,
+                    height: editorSettings.height,
+                    files: programData.files,
+                    img: programData.img
+                })
+            }).then(res => res.text()).then(function (res) {
+                if (res.includes("error")) {
+                    alert(res);
+                } else {
+                    saveButtonEL.$("*span")[0].text("Saved!");
+                }
+            });
+        } else {
+            // forks
+            fetch("/API/create_program", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    title: programData.title,
+                    type: programData.type,
+                    width: editorSettings.width,
+                    height: editorSettings.height,
+                    files: programData.files,
+                    img: programData.img,
+                    parent: programData.id
+                })
+            }).then(res => res.text()).then(function (res) {
+                if (res.includes("error")) {
+                    alert(res);
+                } else {
+                    localStorage.removeItem(localStorageKey);
+                    window.location.href = "/computer-programming/" + res;
+                }
+            });
+        }
         
-        fetch("/API/save_program", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                id: programData.id,
-                title: programData.title,
-                width: editorSettings.width,
-                height: editorSettings.height,
-                files: programData.files,
-                img: programData.img
-            })
-        }).then(res => res.text()).then(function (res) {
-            if (res.includes("error")) {
-                alert(res);
-            } else {
-                saveButtonEL.$("*span")[0].text("Saved!");
-            }
-        });
         setTimeout(() => {
             saveButtonEL.$("*span")[0].text("Save");
             saveButtonEL.disabled = false;
@@ -147,6 +177,7 @@ function saveProgram() {
             if (res.includes("error")) {
                 alert(res);
             } else {
+                localStorage.removeItem(localStorageKey);
                 window.location.href = "/computer-programming/" + res;
             }
         });
@@ -228,7 +259,15 @@ function validateProgramData(data) {
             return e + "invalid project type";
         }
 
+        // validate forks
+        if (data.parent && data.parent !== null && typeof data.parent !== "string") {
+            return e + "invalid parent";
+        }
+        
         // limit size
+        if (data.width % 1 !== 0 || data.height % 1 !== 0) {
+            return e + "project dimensions must be integers";
+        }
         if (data.width < 400 || data.height < 400) {
             return e + "project dimensions can't be less than 400";
         }
@@ -291,10 +330,10 @@ function validateProgramData(data) {
     }
 }
 
-function getFile (name)  {
+function getFile(name)  {
     return programData.files[name];
 }
-function setFile (name, data)  {
+function setFile(name, data)  {
     return programData.files[name] = data;
 }
 
@@ -397,21 +436,127 @@ function timeSince (date) {
     return interval + ' ' + intervalType;
 }
 
+let forksGrid = $("#forks-grid");
+let forksCache = new Map();
+let forksList = [];
+let forksSort = "top";
+let forksPage = 0;
+let recentBtn = $("#recent-btn"),
+    topBtn = $("#top-btn");
+
+function displayForks(programs) {
+    if (programs.length > 0) {
+        forksGrid.innerHTML = "";
+    }
+    
+    forksList.forEach(program => $("program-element", program).appendTo(forksGrid));
+}
+
+async function loadForks(page) {
+    for (let i = page * 16; i < page * 16 + 16; i++) {
+        if (i < programData.forks.length) {
+            let id = programData.forks[i].id;
+            if (forksCache.has(id)) {
+                forksList.push(forksCache.get(id));
+            } else {
+                let program = await $.getJSON(`/CDN/programs/${id[0].toUpperCase()}/${id}/a.json`);
+                forksCache.set(id, program);
+                forksList.push(program);
+            }
+        }
+    }
+    displayForks(forksList);
+}
+
+function changeSort(newSort) {
+    // clear display
+    forksGrid.innerHTML = "";
+
+    // reset variables
+    forksList = [];
+    forksPage = 0;
+    forksSort = newSort;
+
+    // sort forks
+    switch (forksSort) {
+        case "top": {
+            recentBtn.css("text-decoration: none");
+            topBtn.css("text-decoration: underline");
+            programData.forks = programData.forks.sort((a, b) => b.likeCount - a.likeCount);
+            break;
+        }
+        case "recent": {
+            recentBtn.css("text-decoration: underline");
+            topBtn.css("text-decoration: none");
+            programData.forks = programData.forks.sort((a, b) => b.created - a.created);
+            break;
+        }
+    }
+    
+    loadForks(forksPage++);
+}
+
+$("#load-more-forks-btn").on("click", () => {
+    loadForks(forksPage++);
+});
+
+recentBtn.on("click", e => {
+    if (forksSort !== "recent") {
+        changeSort("recent");   
+    }
+});
+
+topBtn.on("click", e => {
+    if (forksSort !== "top") {
+        changeSort("top");   
+    }
+});
+
 if (programData.id) {
-    let authorLink = $("a")
-        .css({
-            textDecoration: "none",
-            color: "rgb(0, 140, 60)"
-        })
-        .text(programData.author.nickname)
-        .attr({
-            target: "_blank",
-            href: "/profile/id_" + programData.author.id
-        });
+    if (!userData) {
+        saveButtonEL.css("display: none");
+    }
+    if (userData && programData.author.id !== userData.id) {
+        saveButtonEL.$("*span")[0].innerText = "Fork";
+    }
+
+    if (typeof programData.parent === "string" && programData.parent.length > 0) {
+        let parentLinkEl = $("#forked-from")
+            .html("Forked From: ");
+        fetch(`/CDN/programs/${programData.parent[0].toUpperCase()}/${programData.parent}/a.json`)
+            .then(res => res.json())
+            .then(res => {
+                parentLinkEl.append(
+                    $("a")
+                        .css({
+                            textDecoration: "none",
+                            color: "rgb(0, 140, 60)"
+                        })
+                        .text(res.title)
+                        .attr({
+                            href: "/computer-programming/" + res.id
+                        })
+                );
+            })
+            .catch(() => {
+                parentLinkEl.textContent += "Deleted Program";
+            })
+    }
 
     let programAuthorEl = $("#program-author")
         .html("Created By: ")
-        .append(authorLink);
+        .append(
+            $("a")
+                .css({
+                    textDecoration: "none",
+                    color: "rgb(0, 140, 60)"
+                })
+                .text(programData.author.nickname)
+                .attr({
+                    target: "_blank",
+                    href: "/profile/id_" + programData.author.id
+                })
+        );
     programAuthorEl.innerHTML += " (Updated " + timeSince(programData.lastSaved - 30 * 1000) + " ago)";
 
     $("#program-hidden").text("Hidden: No");
@@ -493,7 +638,7 @@ if (programData.author) {
     $("#report-program-button").remove();
 }
 
-// about/forks/docs/guidelines tabs
+// about/forks/docs/help tabs
 let selectedTab = 0;
 let tabs = $(".tab-tab");
 let tabPages = $("#tab-content").$(".tab-page");
@@ -520,6 +665,12 @@ for (let i = 0; i < tabs.length; i++) {
         }
         tabs[i].style.borderBottom = "5px solid rgb(31, 171, 84)";
         tabPages[i].style.display = "block";
+
+        switch (i) {
+            case 1: {
+                changeSort(forksSort);
+            }
+        }
     });
 }
 
@@ -667,15 +818,344 @@ require(["vs/editor/editor.main"], () => {
         }
     });
 
+    // run shortcut
+    editor.addAction({
+    	id: "run-shortcut",
+    	label: "Run Shortcut",
+    	keybindings: [
+    		monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter
+    	],
+    	precondition: null,
+    	keybindingContext: null,
+    	contextMenuGroupId: "navigation",
+    	contextMenuOrder: 1.5,
+    	run: runProgram
+    });
+
+    // save shortcut
+    editor.addAction({
+    	id: "save-shortcut",
+    	label: "Save Shortcut",
+    	keybindings: [
+    		monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS
+    	],
+    	precondition: null,
+    	keybindingContext: null,
+    	contextMenuGroupId: "navigation",
+    	contextMenuOrder: 1.5,
+    	run: () => {
+            saveButtonEL.click();
+        }
+    });
+
+    // keep track of mouse presses for scrubber
+    let mouseX = 0;
+    let mouseY = 0;
+    let mouseIsPressed = false;
+    $(document.body)
+        .on("mousemove", e => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        })
+        .on("mousedown", () => {
+            mouseIsPressed = true;
+        })
+        .on("mouseup", () => {
+            mouseIsPressed = false;
+        });
+    
+    // self explanatory
+    let currentScrubber = null;
+
+    // Number Scrubber class
+    class NumberScrubber {
+        static newElement = $.createComponent("number-scrubber", $.html`
+            <div class="number-scrubber">
+                <span class="number-scrubber-left">
+                    <svg width="12px" height="12px" viewBox="-25, -25, 150, 150"><polygon points="0,50 100,0 100, 100" fill="white"></polygon></svg>
+                </span>
+                <span>
+                    <svg width="12px" height="12px" viewBox="-25, -25, 150, 150"><polygon points="50,0 100,50 50,100 0,50" fill="white"></polygon></svg>
+                </span>
+                <span class="number-scrubber-right">
+                    <svg width="12px" height="12px" viewBox="-25, -25, 150, 150"><polygon points="100,50 0,0 0, 100" fill="white"></polygon></svg>
+                </span>
+                <div class="number-scrubber-arrow"></div>
+            </div>
+        `);
+
+        originX;
+        mouseOriginX;
+        x;
+        y;
+        rStart = 0;
+        rEnd = 0;
+        cStart = 0;
+        cEnd = 0;
+        element;
+        value = 0;
+        decimalPlaces = 0;
+        increment = 1;
+        isPressed = false;
+        isMoving = false;
+        moveInterval = null;
+        
+        constructor(x, y, rStart, cStart, rEnd, cEnd, textContent) {
+            let self = this;
+            
+            this.rStart = rStart;
+            this.cStart = cStart;
+            this.rEnd = rEnd;
+            this.cEnd = cEnd;
+
+            {
+                let spl = textContent.split(".");
+                if (spl[1]) {
+                    this.decimalPlaces = spl[1].length;
+                    this.increment = 1 / (10 ** this.decimalPlaces);
+                }
+                
+                let i = 0;
+                while ("-.0123456789".includes(textContent[i])) {
+                    i++;
+                }
+                this.value = Number(textContent.slice(0, i));
+            }
+            
+            this.element = NumberScrubber.newElement().appendTo(document.body);
+            let size = this.element.getBoundingClientRect();
+            this.originX = x;
+            this.x = this.originX - size.width / 2;
+            this.y = y - size.height - 14;
+            this.element.css({
+                left: this.x + "px",
+                top: this.y + "px"
+            });
+
+            this.element.on("mousedown", e => {
+                self.isPressed = true;
+                self.isMoving = false;
+                self.mouseOriginX = e.clientX;
+            });
+
+            this.element.on("mousemove", () => {
+                if (self.isPressed && !self.isMoving) {
+                    self.isMoving = true;
+                    self.moveInterval = setInterval(() => {
+                        if (!mouseIsPressed) {
+                            self.isPressed = false;
+                            clearInterval(self.moveInterval);
+                            self.moveInterval = null;
+            
+                            self.x = self.originX - size.width / 2;
+                            self.element.css({
+                                left: self.x + "px"
+                            });
+                        } else {
+                            self.x = mouseX - size.width / 2;
+                            self.element.css({
+                                left: self.x + "px"
+                            });
+                            self.update(Math.round(mouseX - self.mouseOriginX) * self.increment);
+                            self.mouseOriginX = mouseX;
+                        }
+                    }, 1000 / 120);
+                }
+            });
+    
+            this.element.$(".number-scrubber-left")[0].on("click", () => {
+                self.update(-self.increment);
+            });
+    
+            this.element.$(".number-scrubber-right")[0].on("click", () => {
+                self.update(self.increment);
+            });
+        }
+
+        getEditorText() {
+            let range = new monaco.Range(this.rStart, this.cStart, this.rEnd, this.cEnd);
+            return editor.getModel().getValueInRange(range);
+        }
+
+        update(amt) {
+            let strBefore = this.value.toFixed(this.decimalPlaces);
+            this.value += amt;
+            let strAfter = this.value.toFixed(this.decimalPlaces);
+            
+            editor.executeEdits('number-scrubber', [
+                {
+                    range: new monaco.Range(this.rStart, this.cStart, this.rEnd, this.cEnd),
+                    text: strAfter
+                }
+            ]);
+
+            this.cEnd += strAfter.length - strBefore.length;
+        }
+
+        free() {
+            this.element.remove();
+            if (this.moveInterval !== null) {
+                clearInterval(this.moveInterval);
+            }
+        }
+    }
+
+    // handle clicks to open number scrubber
+    editorDiv.on("click", e => {
+        // get all touched elements
+        let els = document.elementsFromPoint(e.clientX, e.clientY);
+        for (let i = 0; i < els.length; i++) {
+            let el = els[i];
+            // find the innermost span
+            if (el.nodeName === "SPAN" && el.children.length === 0) {
+                // parse token to number
+                let tokenContent = el.textContent;
+                let res = parseFloat(tokenContent);
+                if (typeof res === "number" && !Number.isNaN(res)) {
+                    // find padding
+                    let startPadding = tokenContent.length - tokenContent.trimStart().length;
+                    let endPadding = tokenContent.length - tokenContent.trimEnd().length;
+                    
+                    // get list of siblings plus self
+                    let kids = Array.from(el.parentElement.getElementsByTagName("span"));
+                    // get the row element of the token
+                    let line = el.parentElement.parentElement;
+
+                    // handle negative numbers
+                    let isNegative = startPadding === 0 && kids.indexOf(el) > 0 && kids[kids.indexOf(el) - 1].textContent === "-";
+
+                    // find start index of token
+                    let columnStart = 1;
+                    {
+                        let j = 0;
+                        while (kids[j] !== el && j < kids.length) {
+                            columnStart += kids[j].textContent.length;
+                            j++;
+                        }
+                    }
+
+                    // find end index of token
+                    let columnEnd = columnStart + tokenContent.length;
+                    let lines = Array.from(line.parentElement.getElementsByClassName("view-line"));
+                    lines = lines.sort((a, b) => parseInt(a.style.top) - parseInt(b.style.top));
+                    let displayRow = 0;
+                    for (let j = 0; j < lines.length; j++) {
+                        if (lines[j] === line) {
+                            displayRow = j;
+                            break;
+                        }
+                    }
+
+                    // adjust for padding
+                    columnStart += startPadding;
+                    columnEnd -= endPadding;
+
+                    // find position
+                    let lineNumbers = Array.from($(".margin-view-overlays")[0].children);
+                    lineNumbers = lineNumbers.sort((a, b) => parseInt(a.textContent) - parseInt(b.textContent));
+                    let row = parseInt(lineNumbers[displayRow].textContent);
+                    let pos = el.getBoundingClientRect();
+                    let charW = pos.width / tokenContent.length;
+
+                    currentScrubber = new NumberScrubber(
+                        pos.x + (startPadding * charW) + (pos.width - startPadding * charW - endPadding * charW) / 2, 
+                        pos.y, row, columnStart - (isNegative ? 1 : 0), row, columnEnd, (isNegative ? "-" : "") + tokenContent.trim()
+                    );
+                }
+            }
+        }
+    });
+
+    // remove number scrubber if you scroll too far
+    editor.onDidScrollChange(e => {
+        let yChange = e._oldScrollTop - e.scrollTop;
+        if (currentScrubber) {
+            currentScrubber.y += yChange;
+            currentScrubber.element.css({
+                top: currentScrubber.y + "px"
+            });
+
+            let editorArea = editorDiv.getBoundingClientRect();
+            if (currentScrubber.y + 40 < editorArea.y || currentScrubber.y + 40 > editorArea.y + editorArea.height) {
+                currentScrubber.free();
+                currentScrubber = null;
+            }
+        }
+    });
+
+    // remove number scrubber on mouse and key presses
+    function checkDestroyScrubber() {
+        if (currentScrubber !== null) {
+            currentScrubber.free();
+            currentScrubber = null;
+        }
+    }
+    editor.onMouseDown(checkDestroyScrubber);
+    editor.onKeyDown(checkDestroyScrubber);
+    $(document.body).on("mousedown", e => {
+        if (currentScrubber !== null && !currentScrubber.element.contains(e.target) && !editorDiv.el.contains(e.target)) {
+            checkDestroyScrubber();
+        }
+    });
+
+    // help make tabs draggable
+    let dragTabPlaceholder = $("div").text("|").css(`
+        background-color: gray;
+        width: 2px;
+        margin-left: 2px;
+        display: inline-block;
+        margin-right: 4px;
+        color: transparent;
+        padding-left: 1px;
+        padding-right: 1px;
+        padding-top: 4px;
+        padding-bottom: 3px;
+    `);
+    editorTabsContainer.on("dragenter", e => e.preventDefault());
+    editorTabsContainer.on("dragover", e => {
+        e.preventDefault();
+        
+        let siblings = editorTabsContainer.$(".editor-tab")
+            .filter(t => !t.classList.contains("dragging"))
+            .sort((a, b) => a.offsetLeft - b.offsetLeft);
+
+        let index = 0;
+        for (let i = 0; i < siblings.length; i++) {
+            if (siblings[i].offsetLeft + siblings[i].offsetWidth / 2 < e.clientX) {
+                index++;
+            }
+        }
+
+        if (index < siblings.length) {
+            editorTabsContainer.insertBefore(dragTabPlaceholder, siblings[index].el);
+        } else {
+            editorTabsContainer.insertBefore(dragTabPlaceholder, siblings[siblings.length - 1].el.nextSibling);
+        }    
+    });
+    editorTabsContainer.on("dragend", e => {
+        e.preventDefault();
+        editorTabsContainer.replaceChild(e.target, dragTabPlaceholder);
+    });
+
+    // editor tab component
     let editorTabEls = [];
     const FileTab = $.createComponent("FileTab", $.html`
-        <div class="editor-tab">
+        <div class="editor-tab" draggable="true">
             <input class="editor-tab-input" type="text" value="\{filename}" data-filename="\{filename}" readonly="true" style="width: \{filename.length}ch">
             <span class="editor-tab-close">${String.fromCharCode(10006)}</span>
         </div>
     `, function() {
         let tabEl = this;
-        
+
+        tabEl.on("dragstart", () => {
+            tabEl.classList.add("dragging");
+        });
+
+        tabEl.on("dragend", () => {
+            tabEl.classList.remove("dragging");
+        });
+
+        // handle the tab being clicked
         tabEl.on("click", function() {
             let that = $(this);
             
@@ -865,6 +1345,44 @@ require(["vs/editor/editor.main"], () => {
         });
     
     } else {
+        
+        // get previous code and write it to the ace editor
+        let programObject = null;
+        try {
+            let programFromStorage = JSON.parse(localStorage.getItem(localStorageKey) ?? "");
+            programData.width = programFromStorage.width;
+            programData.height = programFromStorage.height;
+            for (let i = 0; i < programFromStorage.fileNames.length; i++) {
+                let fileName = programFromStorage.fileNames[i];
+                let content = programFromStorage.files[fileName];
+                
+                if (!programData.fileNames.includes(fileName)) {
+                    programData.fileNames.push(fileName);
+                    programData.files[fileName] = content;
+                } else if (content && content.length > 0) {
+                    programData.files[fileName] = content;
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load scratchpad from local storage");
+        }
+
+        function saveToLocalStorage () {
+            // save user code to local storage
+            localStorage.setItem(localStorageKey, JSON.stringify({
+                width: editorSettings.width,
+                height: editorSettings.height,
+                files: programData.files,
+                fileNames: programData.fileNames
+            }));
+        }
+
+        // save code when the user exits the page
+        window.addEventListener("beforeunload", saveToLocalStorage);
+
+        // save code every minute (if browser fails to save the code when the page is unloaded, this will ensure that all is not lost)
+        setInterval(saveToLocalStorage, 1000 * 60);
+        
         outputFrame
             .attr("src", "https://sandbox.vexcess.repl.co/exec-" + programData.type + ".html?allowAll=true")
             .on("load", () => {
@@ -910,6 +1428,10 @@ require(["vs/editor/editor.main"], () => {
         settingsButtons[1].on("click", () => {
             pageDarkenEl.style.display = "none";
             settingsEl.style.display = "none";
+
+            // coerce canvas dimensions to be integers
+            settingsELs.width.value = settingsELs.width.value | 0;
+            settingsELs.height.value = settingsELs.height.value | 0;
         
             editorSettings.width = parseInt(settingsELs.width.value, 10);
             editorSettings.height = parseInt(settingsELs.height.value, 10);
