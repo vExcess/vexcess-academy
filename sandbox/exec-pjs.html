@@ -3,28 +3,34 @@
 <head>
     <meta charset="utf-8">
     <link rel="stylesheet" href="/sandbox.css" type="text/css">
+    <script src="/khanpjs.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/Khan/processing-js@master/processing.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jshint@2.13.6/dist/jshint.min.js"></script>
 </head>
 <body>
 
-    <div id="live-output-container"></div>
+    <div id="live-output-container">
+        <canvas id="output-canvas"></canvas>
+    </div>
     <div id="warnings-container"></div>
 
     <script src="/sandbox.js"></script>
 
     <script>
 const Process = {
+    processingInstance: null,
     width: 400,
     height: 400,
+    sourceCode: "",
     code: "",
-    loopProtectionEnabled: true,
+    codeInjector: "sikn",
+    lintingOn: true,
     restart: function () { 
         window.postMessage({
             width: Process.width,
             height: Process.height,
             files: {
-                "index.js": Process.code
+                "index.js": Process.sourceCode
             }
         }, "*");
     },
@@ -37,7 +43,14 @@ const Process = {
         audiosLoaded: 0
     },
     audioCache: {},
-    imageCache: {}
+    imageCache: {},
+    injector: new KhanPJS({
+        enableLoopProtect: true,
+        infiniteLoopCallback: function(error){console.log("INF LOOP", error)},
+        startupTimeout: 2000,
+        programTimeout: 500,
+        loopCheck: 1000,
+    }).injector
 };
         
 // avoid polluting global namespace
@@ -45,14 +58,13 @@ const Process = {
     const JSHINT = window.JSHINT;
     window.JSHINT = undefined;
     
-    let liveOutputCanvas = document.createElement("canvas");
-    liveOutputCanvas.id = "output-canvas";
+    let liveOutputCanvas = document.getElementById("output-canvas");
 
     // so we can clear old intervals
     const _setInterval = window.setInterval;
     let intervals = [];
     window.setInterval = function(fxn, time) {
-        var interval = _setInterval(fxn, time);
+        let interval = _setInterval(fxn, time);
         intervals.push(interval);
         return interval;
     };
@@ -64,12 +76,13 @@ const Process = {
         animeFrameReq = _requestAnimationFrame(fxn);
         return animeFrameReq;
     };
-    
-    let currProcessingInst = null;
 
     function generateCode() {
         return `
 window.parent = window;
+
+const processingInstance = Process.processingInstance;
+const __env__ = processingInstance;
 
 // Polyfills for Khan Academy programs
 var getImage = function (file) { 
@@ -163,10 +176,47 @@ for (let i = 0; i < Process.preload.imageAccessors.length; i++) {
     }
 }
 
+processingInstance.getImage = getImage;
+processingInstance.getSound = getSound;
+processingInstance.playSound = playSound;
+
+processingInstance.KAInfiniteLoopMaxTime = 500;
+processingInstance.KAInfiniteLoopSetTimeout = function(limit) {
+    processingInstance.KAInfiniteLoopMaxTime = limit;
+};
+processingInstance.KAInfiniteLoopCount = 0;
+processingInstance.loopCounts = [];
+processingInstance.KAInfiniteLoopProtect = function(location) {
+    if (location) {
+        if (!processingInstance.loopCounts[location]) {
+            processingInstance.loopCounts[location] = 0;
+        }
+        processingInstance.loopCounts[location] += 1;
+    }
+    
+    let now = Date.now();
+    if (!Process.branchStartTime) {
+        Process.branchStartTime = now;
+        setTimeout(() => Process.branchStartTime = 0, 0);
+    }
+
+    if (now - Process.branchStartTime > processingInstance.KAInfiniteLoopMaxTime) {
+        throw "Code taking too long to run";
+    }
+};
+
+// for KA compatability
+processingInstance.Program = {
+    restart() {
+        Process.restart();
+    }
+};
+processingInstance.debug = console.log;
+
 let runStartInterval = setInterval(function() {
     if (Process.preload.imagesLoaded === Process.preload.imagesExpected) {
         clearInterval(runStartInterval);
-        
+
         with (processingInstance) {
             // vvvvv USER SUPPLIED CODE vvvvv
             ${Process.code}
@@ -210,7 +260,7 @@ let runStartInterval = setInterval(function() {
         // lint code
         for (let fileName in files) {
             if (fileName.toLowerCase().endsWith(".js")) {
-                JSHINT(files["index.js"], {
+                JSHINT("// jshint -W082\n// jshint -W079\n" + files["index.js"], {
                     esversion: 11,
                     asi: true,
                     boss: true,
@@ -232,50 +282,70 @@ let runStartInterval = setInterval(function() {
         let syntaxErrors = JSHINT.data().errors;
         if (syntaxErrors && syntaxErrors.length > 0) {
             for (let i = 0; i < Math.min(syntaxErrors.length, 5); i++) {
-                createWarning(syntaxErrors[i].raw + " on line " + syntaxErrors[i].line + "\n `" + syntaxErrors[i].evidence + "`");
+                console.log(syntaxErrors[i])
+                createWarning(syntaxErrors[i].raw + " on line " + (syntaxErrors[i].line - 2) + "\n `" + syntaxErrors[i].evidence + "`");
             }
         } else {
+            if (Process.processingInstance) {
+                // clear old intervals
+                for (var i = 0; i < intervals.length; i++) {
+                    clearInterval(intervals[i]);
+                }
+                intervals = [];
+    
+                // cancel old animation frames
+                cancelAnimationFrame(animeFrameReq);
+            
+                // delete old Processing instances
+                for (let i = 0; i < Processing.instances.length; i++) {
+                    Processing.instances[i].exit();
+                    if (Processing.instances[i] === Process.processingInstance) {
+                        continue;
+                    }
+                }
+            }
+
+            // reset canvas
+            liveOutputContainer.innerHTML = "";
+            liveOutputCanvas = document.createElement("canvas");
+            liveOutputContainer.append(liveOutputCanvas);
+            
+            // create new Processing instance
+            Process.processingInstance = new Processing(liveOutputCanvas, inst => inst.draw = ()=>{});
+            
             Process.width = data.width;
             Process.height = data.height;
-            Process.code = preprocessJS(files["index.js"], {
-                PJS: true,
-                loopProtect: Process.loopProtectionEnabled,
-                topScope: true
-            });
             
+            Process.sourceCode = files["index.js"];
+            try {
+                switch (Process.codeInjector) {
+                    case "vexcess":
+                        Process.code = preprocessJS(Process.sourceCode, {
+                            PJS: true,
+                            loopProtect: true,
+                            topScope: true
+                        });
+                        break;
+                    case "sikn":
+                        Process.code = Process.injector.transformCode(Process.sourceCode, Process.processingInstance, null);
+                        break;
+                    default:
+                        Process.code = Process.sourceCode;
+                        break;
+                }
+            } catch (err) {
+                createWarning(syntaxErrors[i].dscription + " on line " + syntaxErrors[i].lineNumber);
+            }
+
+            // run new code
             let runFxn;
             try {
-                runFxn = new Function("processingInstance", generateCode());
+                eval(generateCode());
             } catch (err) {
                 console.log(err);
                 createWarning(err);
             }
-        
-            // create new canvas
-            liveOutputContainer.innerHTML = "";
-            liveOutputCanvas = document.createElement("canvas");
-            liveOutputCanvas.id = "output-canvas";
-            liveOutputContainer.append(liveOutputCanvas);
-        
-            // clear old intervals
-            for (var i = 0; i < intervals.length; i++) {
-                clearInterval(intervals[i]);
-            }
-            intervals = [];
-
-            // cancel old animation frames
-            cancelAnimationFrame(animeFrameReq);
-        
-            // delete old Processing instances
-            for (let i = 0; i < Processing.instances.length; i++) {
-                Processing.instances[i].exit();
-                if (Processing.instances[i] === currProcessingInst) {
-                    continue;
-                }
-            }
-        
-            // create new Processing instance
-            currProcessingInst = new Processing(liveOutputCanvas, runFxn);
+            
         }
     });
 })();

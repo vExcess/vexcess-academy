@@ -1,3 +1,5 @@
+const sandboxURL = "https://sandbox.vxsacademy.org";
+
 // set program title
 let programTitleEl = $("#program-title").$("*span")[0];
 let editTitleBtn = $("#edit-title-btn");
@@ -120,7 +122,7 @@ function saveProgram() {
                     width: editorSettings.width,
                     height: editorSettings.height,
                     files: programData.files,
-                    img: programData.img
+                    thumbnail: programData.thumbnail
                 })
             }).then(res => res.text()).then(function (res) {
                 if (res.includes("error")) {
@@ -142,17 +144,19 @@ function saveProgram() {
                     width: editorSettings.width,
                     height: editorSettings.height,
                     files: programData.files,
-                    img: programData.img,
+                    thumbnail: programData.thumbnail,
                     parent: programData.id
                 })
             }).then(res => res.text()).then(function (res) {
                 if (res.includes("error")) {
                     alert(res);
                 } else {
-                    localStorage.removeItem(localStorageKey);
                     window.location.href = "/computer-programming/" + res;
                 }
             });
+
+            // when you save the program it gets removed from localStorage
+            localStorage.removeItem(localStorageKey);
         }
         
         setTimeout(() => {
@@ -171,7 +175,7 @@ function saveProgram() {
                 width: editorSettings.width,
                 height: editorSettings.height,
                 files: programData.files,
-                img: programData.img
+                thumbnail: programData.thumbnail
             })
         }).then(res => res.text()).then(function (res) {
             if (res.includes("error")) {
@@ -195,7 +199,7 @@ window.addEventListener("message", event => {
         }
 
         if (data.event === "thumbnail") {
-            programData.img = data.img;
+            programData.thumbnail = data.thumbnail;
 
             if (expectingSave) {
                 saveProgram();
@@ -275,17 +279,19 @@ function validateProgramData(data) {
             return e + "project dimensions can't be larger than 16384";
         }
 
-        if (typeof data.img === "string" || typeof data.img === "undefined") {
+        if (data.thumbnail === undefined) {
+            // do nothing
+        } else if (typeof data.thumbnail === "string") {
             // validate thumbnail type
             if (!(
-                data.img.startsWith("data:image/jpg;base64,") ||
-                data.img.startsWith("data:image/jpeg;base64,") ||
-                data.img.startsWith("data:image/jfif;base64,")
+                data.thumbnail.startsWith("data:image/jpg;base64,") ||
+                data.thumbnail.startsWith("data:image/jpeg;base64,") ||
+                data.thumbnail.startsWith("data:image/jfif;base64,")
             )) {
                 return e + "project thumbnail must be a jpg/jpeg/jfif";
             }
             // validate thumbnail size to 128 KB
-            if (data.img.length > 128 * 1024) {
+            if (data.thumbnail.length > 128 * 1024) {
                 return e + "project thumbnail is too big; 128 KB allowed";
             }
         } else {
@@ -459,7 +465,7 @@ async function loadForks(page) {
             if (forksCache.has(id)) {
                 forksList.push(forksCache.get(id));
             } else {
-                let program = await $.getJSON(`/CDN/programs/${id[0].toUpperCase()}/${id}/a.json`);
+                let program = await $.getJSON(`/CDN/programs/${id}.json`);
                 forksCache.set(id, program);
                 forksList.push(program);
             }
@@ -523,7 +529,7 @@ if (programData.id) {
     if (typeof programData.parent === "string" && programData.parent.length > 0) {
         let parentLinkEl = $("#forked-from")
             .html("Forked From: ");
-        fetch(`/CDN/programs/${programData.parent[0].toUpperCase()}/${programData.parent}/a.json`)
+        fetch(`/CDN/programs/${programData.parent}.json`)
             .then(res => res.json())
             .then(res => {
                 parentLinkEl.append(
@@ -1290,8 +1296,8 @@ require(["vs/editor/editor.main"], () => {
 
     // load program if it's not a new program
     if (programData.id) {
-        fetch(`/CDN/programs/${programData.id[0].toUpperCase()}/${programData.id}/f.json`).then(res => res.json()).then(json => {
-            programData.files = json;
+        fetch(`/CDN/programs/${programData.id}.json`).then(res => res.json()).then(json => {
+            programData.files = json.files;
 
             const whitelist = [
                 "cdn.jsdelivr.net",
@@ -1336,7 +1342,7 @@ require(["vs/editor/editor.main"], () => {
             }
             
             outputFrame
-                .attr("src", "https://sandbox.vexcess.repl.co/exec-" + programData.type + ".html?" + domains.map(btoa).join("&"))
+                .attr("src", sandboxURL + "/exec-" + programData.type + ".html?" + domains.map(btoa).join("&"))
                 .on("load", () => {
                     startEditor();
                     runProgram();
@@ -1384,7 +1390,7 @@ require(["vs/editor/editor.main"], () => {
         setInterval(saveToLocalStorage, 1000 * 60);
         
         outputFrame
-            .attr("src", "https://sandbox.vexcess.repl.co/exec-" + programData.type + ".html?allowAll=true")
+            .attr("src", sandboxURL + "/exec-" + programData.type + ".html?allowAll=true")
             .on("load", () => {
                 startEditor();
                 runProgram();

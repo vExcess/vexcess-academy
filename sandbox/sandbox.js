@@ -225,7 +225,7 @@ function sendThumnailFromCanvas(canvas) {
     window.top.postMessage({
         sender: "sandbox",
         event: "thumbnail",
-        img: imgCanvas.toDataURL("image/jpeg", 0.5)
+        thumbnail: imgCanvas.toDataURL("image/jpeg", 0.5)
     }, "*");
 }
 

@@ -81,8 +81,10 @@
             return c;
         },
         delete: icon => {
-            icon.remove();
-            activeIcons.splice(activeIcons.indexOf(icon), 1);
+            if (icon !== null) {
+                icon.remove();
+                activeIcons.splice(activeIcons.indexOf(icon), 1);
+            }
         }
     };
 })()

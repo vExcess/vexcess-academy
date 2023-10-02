@@ -1,5 +1,9 @@
+// import dependencies
 const http = require('http');
 const fs = require('fs');
+
+// it'd be very bad if these were publicly available
+const secrets = require("../secrets");
 
 function parseQuery(url) {
     let quesIdx = url.indexOf("?");
@@ -108,6 +112,6 @@ const server = http.createServer((req, res) => {
     }
 });
 
-server.listen(3000, function () {
-  console.log("Server Online!");
+server.listen(secrets.sandboxPort, function () {
+    console.log("Sandbox Online at http://127.0.0.1:" + secrets.sandboxPort);
 });

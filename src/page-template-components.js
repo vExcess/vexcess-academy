@@ -27,7 +27,7 @@ $.createComponent("program-element", $.html`
     let img = this.$(".program_thumbnail")[0];
     img.dataset.failed = "false";
     img.css("display: none")
-        .attr("src", "/CDN/programs/" + program.id[0].toUpperCase() + "/" + program.id + "/i.jpg")
+        .attr("src", `/CDN/programs/${program.id}.jpg`)
         .on("error", () => {
             if (img.dataset.failed === "false") {
                 img.src = "/CDN/images/404_image.jpg";

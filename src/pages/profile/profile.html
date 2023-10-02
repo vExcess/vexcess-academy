@@ -148,7 +148,7 @@ if (who !== undefined) {
         for (var i = 0; i < profileData.projects.length; i++) {
             let projectId = profileData.projects[i];
     
-            fetch(`/CDN/programs/${projectId.charAt(0).toUpperCase()}/${projectId}/a.json`)
+            fetch(`/CDN/programs/${projectId}.json`)
                 .then(res => res.json())
                 .then(data => {
                     $("program-element", data).appendTo(showcaseEl)

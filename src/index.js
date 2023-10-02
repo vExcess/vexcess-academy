@@ -1,39 +1,29 @@
-// ["4z8ywyj6l","8f56h5k6l","4uc046l6l","9sffem28l","6eoaff68l","3hom9b98l"]
-
 console.log("Program Initiated!");
 
 // For when I'm doing updates
 const SERVER_DOWN = false;
 
 // import dependencies
-const http = require("https");
-const fs = require("fs");
+const http = require("node:https");
+const fs = require("node:fs");
 const crypto = require("node:crypto");
 const Crypto_AES = require("crypto-js/aes");
 const Crypto_SHA256 = require("crypto-js/sha256");
 const Crypto_Base64 = require("crypto-js/enc-base64");
 const Crypto_Utf8 = require("crypto-js/enc-utf8");
-const Database = class {
-    #data;
-    constructor() {
-        this.#data = JSON.parse(fs.readFileSync("../temp-db.json").toString());
-    }
-    get(key) {
-        return this.#data[key];
-    }
-    set(key, val) {
-        this.#data[key] = val;
-        fs.writeFile("../temp-db.json", JSON.stringify(this.#data), err => {
-            console.log("ERR temp db", key, val)
-        });
-    }
-};
-const db = new Database();
+const { MongoClient } = require("mongodb");
+const bson = require("bson");
 
 // it'd be very bad if these were publicly available
 const secrets = require("../secrets");
 process.env.MASTER_KEY = secrets.MASTER_KEY;
 process.env.RECAPTCHA_KEY = secrets.RECAPTCHA_KEY;
+
+const myMongo = new MongoClient(secrets.databaseURL);
+let db = null;
+let users = null;
+let programs = null;
+let salts = null;
 
 function SHA256(str) {
     return Crypto_Base64.stringify(Crypto_SHA256(str));
@@ -219,17 +209,32 @@ function validateProgramData(data) {
             return e + "project dimensions can't be larger than 16384";
         }
 
-        if (typeof data.img === "string" || typeof data.img === "undefined") {
+        if (data.thumbnail === null) {
+            // do nothing
+        } else if (typeof data.thumbnail === "string") {
             // validate thumbnail type
             if (!(
-                data.img.startsWith("data:image/jpg;base64,") ||
-                data.img.startsWith("data:image/jpeg;base64,") ||
-                data.img.startsWith("data:image/jfif;base64,")
+                data.thumbnail.startsWith("data:image/jpg;base64,") ||
+                data.thumbnail.startsWith("data:image/jpeg;base64,") ||
+                data.thumbnail.startsWith("data:image/jfif;base64,")
             )) {
                 return e + "project thumbnail must be a jpg/jpeg/jfif";
             }
             // validate thumbnail size to 128 KB
-            if (data.img.length > 128 * 1024) {
+            if (data.thumbnail.length > 128 * 1024) {
+                return e + "project thumbnail is too big; 128 KB allowed";
+            }
+        } else if (typeof data.thumbnail === "object") {
+            // validate thumbnail type
+            if (!(
+                data.thumbnail.buffer[0] === 0xFF &&
+                data.thumbnail.buffer[1] === 0xD8 &&
+                data.thumbnail.buffer[2] === 0xFF
+            )) {
+                return e + "project thumbnail must be a jpg/jpeg/jfif";
+            }
+            // validate thumbnail size to 128 KB
+            if (data.thumbnail.length > 128 * 1024) {
                 return e + "project thumbnail is too big; 128 KB allowed";
             }
         } else {
@@ -319,11 +324,37 @@ function validatePassword(password) {
     return "OK";
 }
 
+function calculateHotness(upvotes, uploadedOn) {
+    // Constants for the Wilson Score Interval
+    const z = 1.96; // 95% confidence interval
+    
+    // Calculate the fraction of upvotes
+    const p = upvotes / (upvotes + 1); // Adding 1 to avoid division by zero
+    
+    // Calculate the "score"
+    const score =
+    (p + (z * z) / (2 * (upvotes + 1)) - z * Math.sqrt((p * (1 - p) + (z * z) / (4 * (upvotes + 1))) / (upvotes + 1))) /
+    (1 + (z * z) / (upvotes + 1));
+    
+    // Calculate the hotness by considering the time elapsed
+    const elapsedTime = (Date.now() - uploadedOn) / (1000 * 60 * 60); // Convert milliseconds to hours
+    const hotness = score / elapsedTime;
+    
+    return hotness;
+}
+
+
 // for spam detection
 const IP_monitor = readJSON("./ip-data.json") ?? {};
 for (var ip in IP_monitor) {
     IP_monitor[ip].requests = 0;
 }
+// reset spam detection for IPs every minute
+setInterval(function() {
+    for (var ip in IP_monitor) {
+        IP_monitor[ip].requests = 0;
+    }
+}, 1000 * 60 * 1);
 
 // boilerplate code for new programs
 const boilerplate = {
@@ -488,22 +519,9 @@ function createHTMLPage(pg, userData, openGraphTags) {
         .replace("<!-- PAGE CONTENT INSERT -->", fileCache.get(pg));
 }
 
+
 // cache user credentials for fast authentification
-const userCredentials = [];
-const profileFolders = fs.readdirSync("./profiles");
-for (var i = 0; i < profileFolders.length; i++) {
-    var files = fs.readdirSync(`./profiles/${profileFolders[i]}`);
-    for (var j = 0; j < files.length; j++) {
-        var fileData = readJSON(`./profiles/${profileFolders[i]}/${files[j]}`);
-        userCredentials[fileData.id] = {
-            nickname: fileData.nickname,
-            username: fileData.username,
-            password: fileData.password,
-            tokens: fileData.tokens,
-            id: fileData.id
-        };
-    }
-}
+const userCredentials = {};
 
 // program caches for browse projects
 let allPrograms = [];
@@ -511,82 +529,38 @@ let hotListData = [];
 let recentListData = [];
 let topListData = [];
 
-function calculateHotness(upvotes, uploadedOn) {
-    // Constants for the Wilson Score Interval
-    const z = 1.96; // 95% confidence interval
-    
-    // Calculate the fraction of upvotes
-    const p = upvotes / (upvotes + 1); // Adding 1 to avoid division by zero
-    
-    // Calculate the "score"
-    const score =
-    (p + (z * z) / (2 * (upvotes + 1)) - z * Math.sqrt((p * (1 - p) + (z * z) / (4 * (upvotes + 1))) / (upvotes + 1))) /
-    (1 + (z * z) / (upvotes + 1));
-    
-    // Calculate the hotness by considering the time elapsed
-    const elapsedTime = (Date.now() - uploadedOn) / (1000 * 60 * 60); // Convert milliseconds to hours
-    const hotness = score / elapsedTime;
-    
-    return hotness;
-}
 
 // updates browse projects
-function updateProjectLists() {
-    allPrograms = [];
-    let totalPrograms = 0;
+async function updateProjectLists() {
+    allPrograms = await programs.find({}).project({
+        id: 1,
+        type: 1,
+        title: 1,
+        likes: 1,
+        forks: 1,
+        created: 1,
+        author: 1,
+        code: 1,
+        _id: 0
+    }).toArray();
 
-    // TERRIFYING CALLBACK HELL!
-    // get top level programs folders
-    fs.readdir("programs", (err, folders) => {
-        if (err) { return console.log(err) }
+    hotListData = allPrograms.slice();
+    recentListData = allPrograms.slice();
+    topListData = allPrograms.slice();
 
-        for (let i = 0; i < folders.length; i++) {
-            let folderChar = folders[i];
-            
-            // get individual program folders
-            fs.readdir(`programs/${folderChar}`, (err, programFolders) => {
-                if (err) { return console.log(err) }
+    hotListData.sort((a, b) => calculateHotness(b.likes.length + b.forks.length * 2, b.created) - calculateHotness(a.likes.length + a.forks.length * 2, a.created));
+    recentListData.sort((a, b) => b.created - a.created);
+    topListData.sort((a, b) => b.likes.length - a.likes.length);
 
-                totalPrograms += programFolders.length;
-                for (let j = 0; j < programFolders.length; j++) {
-                    // get program data
-                    let path = `programs/${folderChar}/${programFolders[j]}/a.json`;
-                    fs.readFile(path, "utf8", function(err, data) {
-                        if (err) { return console.log(err) }
-                        
-                        let json = parseJSON(data);
-                        if (json === null) {
-                            console.log("ERROR on program " + path);
-                            totalPrograms--;
-                        } else {
-                            allPrograms.push(json);
-                        }
+    // allPrograms.forEach(program => {
+    //     // for manually editing all programs
 
-                        // once finished reading all programs
-                        if (allPrograms.length === totalPrograms) {
-                            hotListData = allPrograms.slice();
-                            recentListData = allPrograms.slice();
-                            topListData = allPrograms.slice();
-
-                            hotListData.sort((a, b) => calculateHotness(b.likes.length + b.forks.length * 2, b.created) - calculateHotness(a.likes.length + a.forks.length * 2, a.created));
-                            recentListData.sort((a, b) => b.created - a.created);
-                            topListData.sort((a, b) => b.likes.length - a.likes.length);
-                        }
-
-                        // For Manually Editing All Program Database
-                        // let programData = parseJSON(data);
-                        // programData.parent = null;
-                        // fs.writeFileSync(path, JSON.stringify(programData));
-                    });
-                }
-            });
-        }
-    });
+    //     programs.updateOne({ id: program.id }, {$unset: {
+    //         code: 1
+    //     }});
+    // });
 }
-updateProjectLists();
 
-// update browse projects every 10 minutes
-setInterval(updateProjectLists, 1000 * 60 * 10);
 
 // tree specifying the routes for the project
 const projectTree = {
@@ -731,16 +705,15 @@ const projectTree = {
                 out.write(webpageCode);
             }
         },
-        "*": (path, out, data) => {
+        "*": async (path, out, data) => {
             try {
                 // existing program path
-                let programDir = `./programs/${path.charAt(0).toUpperCase()}/${path}/`;
-                let programDataPath = programDir + "/a.json";
-                if (fs.existsSync(programDataPath)) {
-                    let programData = readJSON(programDataPath);
-                    if (programData === null) {
-                        return out.write("500");
-                    }
+                let programData = await programs.findOne({id: path}/*, {projection: {id: 1, _id: 0}}*/);
+                
+                if (programData === null) {
+                    // exit if program
+                    return out.write("500");
+                } else {
                     // hide sensitive data from front end
                     programData.likeCount = programData.likes.length;
                     if (data.userData && programData.likes.includes(data.userData.id)) {
@@ -811,7 +784,10 @@ const projectTree = {
                         power into cracking a user token it would take 204528192898125370000 billion years
                     */
 
-                    db.set(userId, userSalt);
+                    salts.insertOne({
+                        id: userId,
+                        salt: userSalt
+                    });
 
                     let profile = {
                         nickname: json.username,
@@ -831,8 +807,6 @@ const projectTree = {
                     });
                     let captcha = await res.json();
                     if (captcha.success) {
-                        let directory = "./profiles/" + profile.id.charAt(0).toUpperCase();
-
                         userCredentials[profile.id] = {
                             username: profile.username,
                             password: profile.password,
@@ -849,17 +823,13 @@ const projectTree = {
                             }
                         });
 
+                        // log new user
                         console.log("ACCOUNT MADE", profile);
 
-                        fs.mkdir(directory, { recursive: true }, () => {
-                            // write main data file
-                            fs.writeFile(
-                                directory + `/${profile.id}.json`,
-                                JSON.stringify(profile),
-                                () => { }
-                            );
-                        });
+                        // save user to database
+                        users.insertOne(profile);
 
+                        // send user their auth token
                         out.write(userTok);
                     } else {
                         out.write("error: recaptcha failed");
@@ -886,11 +856,10 @@ const projectTree = {
                     for (let id in userCredentials) {
                         let user = userCredentials[id];
                         if (user.username === json.username) {
-                            let salt = await db.get(user.id);
+                            let salt = (await salts.findOne({ id: user.id })).salt;
 
                             if (user.password === SHA256(salt + json.password)) {
-                                let directory = "./profiles/" + id.charAt(0).toUpperCase();
-                                let profile = readJSON(`${directory}/${id}.json`);
+                                let profile = await users.findOne({ id });
                                 
                                 // generate new auth token on every sign in
                                 let userTok = genRandomToken(32);
@@ -910,11 +879,9 @@ const projectTree = {
                                 
                                 // update profile in storage
                                 profile.tokens.push(Date.now(), AES_encrypt(salt + userTok, process.env.MASTER_KEY));
-                                fs.writeFile(
-                                    `${directory}/${id}.json`,
-                                    JSON.stringify(profile),
-                                    () => { }
-                                );
+                                users.updateOne({ id }, {$set: {
+                                    tokens: profile.tokens
+                                }});
                                     
                                 out.write(userTok);
                                 return;
@@ -931,7 +898,7 @@ const projectTree = {
                     return;
                 }
             },
-            "create_program": (path, out, data) => {
+            "create_program": async (path, out, data) => {
                 // create program endpoint
                 let json = parseJSON(data.postData);
                 if (json === null) {
@@ -965,14 +932,14 @@ const projectTree = {
                     width: json.width,
                     height: json.height,
                     fileNames: Object.keys(json.files),
-                    files: {},
+                    files: json.files,
                     author: {
                         username: data.userData.username,
                         id: data.userData.id,
                         nickname: data.userData.nickname
                     },
                     parent: json.parent ?? null,
-                    img: json.img
+                    thumbnail: json.thumbnail ? new bson.Binary(Buffer.from(json.thumbnail.slice(json.thumbnail.indexOf(",") + 1), 'base64')) : null
                 };
 
                 // validate input
@@ -980,12 +947,10 @@ const projectTree = {
                 if (programCheck !== "OK") creationError = programCheck;
 
                 // check if parent exists
+                let parentProgram = null;
                 if (programData.parent !== null && programData.parent.length > 0) {
-                    // parent directory path
-                    let parentDir = "./programs/" + programData.parent[0].toUpperCase() + "/" + programData.parent;
-    
-                    // check if dir exists
-                    if (!fs.existsSync(parentDir)) creationError = "error: parent non-existent";
+                    parentProgram = await programs.findOne({id: programData.parent});
+                    if (parentProgram === null) creationError = "error: parent non-existent";
                 }
 
                 if (!creationError) {
@@ -993,71 +958,28 @@ const projectTree = {
                     do {
                         // create program id
                         programId = genRandomToken(6) + Date.now().toString(36);
-                        // create program directory path
-                        directory = "./programs/" + programId.charAt(0).toUpperCase() + "/" + programId;
-                    } while (fs.existsSync(directory)); // check if program already exists
+                    } while (await programs.findOne({id: programId}) !== null); // check if program already exists
 
                     programData.id = programId;
 
                     // update parent forks array
-                    if (programData.parent !== null && programData.parent.length > 0) {
-                        // parent directory path
-                        let parentDir = "./programs/" + programData.parent[0].toUpperCase() + "/" + programData.parent;
-        
-                        // check if dir exists
-                        if (!fs.existsSync(parentDir)) creationError = "error: parent non-existent";
-    
-                        if (!creationError) {
-                            let parentData = readJSON(parentDir + "/a.json");
-                            parentData.forks.push({
+                    if (parentProgram !== null) {
+                        programs.updateOne({ id: programData.parent }, {$push: {
+                            forks: {
                                 id: programData.id,
                                 created: programData.created,
                                 likeCount: programData.likes.length
-                            });
-                            fs.writeFile(
-                                parentDir + "/a.json",
-                                JSON.stringify(parentData),
-                                () => { }
-                            );
-                        }
+                            }
+                        }});
                     }
 
                     // add program to user's profile
-                    var authorIdStr = programData.author.id.toString();
-                    var authorProfDir = `./profiles/${authorIdStr.charAt(0).toUpperCase()}/${authorIdStr}.json`;
-                    var userProfile = readJSON(authorProfDir);
-                    userProfile.projects.push(programData.id);
-                    fs.writeFile(authorProfDir, JSON.stringify(userProfile), _ => { });
+                    users.updateOne({ id: programData.author.id }, {$push: {
+                        projects: programData.id
+                    }});
 
-                    // save files to storage
-                    fs.mkdir(directory, { recursive: true }, function() {
-                        // save image
-                        if (programData.img) {
-                            fs.writeFile(
-                                directory + "/i.jpg",
-                                Buffer.from(programData.img.slice(programData.img.indexOf(",") + 1), 'base64'),
-                                () => { }
-                            );
-                        }
-
-                        delete programData.img;
-
-                        // save files data
-                        fs.writeFile(
-                            directory + "/f.json",
-                            JSON.stringify(json.files),
-                            () => { }
-                        );
-
-                        delete programData.files;
-
-                        // save about data
-                        fs.writeFile(
-                            directory + "/a.json",
-                            JSON.stringify(programData),
-                            () => { }
-                        );
-                    });
+                    // save program to database
+                    programs.insertOne(programData);
                 }
 
                 // send program id to user
@@ -1067,7 +989,7 @@ const projectTree = {
                     out.write(programId);
                 }
             },
-            "save_program": (path, out, data) => {
+            "save_program": async (path, out, data) => {
                 // save program endpoint
                 let json = parseJSON(data.postData);
                 if (json === null) {
@@ -1086,54 +1008,36 @@ const projectTree = {
                     return;
                 }
 
-                // create program directory path
-                let directory = "./programs/" + json.id.charAt(0).toUpperCase() + "/" + json.id;
-
                 // check if dir exists
-                if (!fs.existsSync(directory)) creationError = "error: program non-existent";
+                let programData = await programs.findOne({ id: json.id });
+                if (programData === null) {
+                    creationError = "error: program non-existent";
+                }
 
                 // temp obj for program data
-                var programData = readJSON(directory + "/a.json");
                 programData.title = json.title;
                 programData.lastSaved = Date.now();
                 programData.width = json.width;
                 programData.height = json.height;
                 programData.fileNames = Object.keys(json.files);
                 programData.files = json.files;
-                programData.img = json.img;
+                programData.thumbnail = json.thumbnail;
 
                 // validate input
-                var programCheck = validateProgramData(programData);
+                let programCheck = validateProgramData(programData);
                 if (programCheck !== "OK") creationError = programCheck;
 
-                // save program to storage
+                // update program in database
                 if (!creationError) {
-                    // save image
-                    if (programData.img) {
-                        fs.writeFile(
-                            directory + "/i.jpg",
-                            Buffer.from(programData.img.slice(programData.img.indexOf(",") + 1), 'base64'),
-                            () => { }
-                        );
-                    }
-
-                    delete programData.img;
-
-                    // save files data
-                    fs.writeFile(
-                        directory + "/f.json",
-                        JSON.stringify(json.files),
-                        () => { }
-                    );
-
-                    delete programData.files;
-
-                    // save about data
-                    fs.writeFile(
-                        directory + "/a.json",
-                        JSON.stringify(programData),
-                        () => { }
-                    );
+                    programs.updateOne({ id: json.id }, {$set: {
+                        title: json.title,
+                        lastSaved: Date.now(),
+                        width: json.width,
+                        height: json.height,
+                        fileNames: Object.keys(json.files),
+                        files: json.files,
+                        thumbnail: json.thumbnail
+                    }});
                 }
 
                 // send program id to user
@@ -1143,10 +1047,16 @@ const projectTree = {
                     out.write("OK");
                 }
             },
-            "delete_program": (path, out, data) => {
+            "delete_program": async (path, out, data) => {
                 // delete program endpoint
-                let dirLoc = `./programs/${data.postData.charAt(0).toUpperCase()}/${data.postData}`;
-                let programData = readJSON(dirLoc + "/a.json");
+
+                let programData = await programs.findOne({ id: data.postData });
+
+                // check if program exists
+                if (programData === null) {
+                    out.write("error: program doesn't exist");
+                    return;
+                }
 
                 // check if has permission to delete data
                 try {
@@ -1158,96 +1068,67 @@ const projectTree = {
                     return;
                 }
 
-                if (programData === null) {
-                    out.write("error: error while deleting program");
-                    return;
-                }
-
                 if (!data.hasPermission) {
                     out.write("error: access denied");
                     return;
                 }
 
-                if (fs.existsSync(dirLoc)) {
-                    // remove from parent forks array
-                    if (programData.parent !== null && programData.parent.length > 0) {
-                        // parent directory path
-                        let parentDir = "./programs/" + programData.parent[0].toUpperCase() + "/" + programData.parent;
-                        
-                        let parentData = readJSON(parentDir + "/a.json");
-                        if (parentData !== null) {
-                            let idx = parentData.forks.indexOf(programData.id);
-                            if (idx !== -1) {
-                                parentData.forks.splice(idx, 1);
-                                fs.writeFile(
-                                    parentDir + "/a.json",
-                                    JSON.stringify(parentData),
-                                    () => { }
-                                );
-                            }
-                        }
+                // remove from parent forks array
+                if (programData.parent !== null && programData.parent.length > 0) {
+                    let parentData = await programs.findOne({ id: programData.parent });
+                    if (parentData !== null) {
+                        programs.updateOne({ id: programData.parent }, {$pull: {
+                            forks: programData.id
+                        }});
                     }
-                    
-                    // remove program from user's profile
-                    var authorIdStr = data.userData.id.toString();
-                    var authorProfDir = `./profiles/${authorIdStr.charAt(0).toUpperCase()}/${authorIdStr}.json`;
-                    var userProfile = parseJSON(fs.readFileSync(authorProfDir, 'utf8'));
-                    userProfile.projects.splice(userProfile.projects.indexOf(data.postData), 1);
-                    fs.writeFile(authorProfDir, JSON.stringify(userProfile), _ => { });
-
-                    // delete program from storage
-                    fs.rm(dirLoc, { recursive: true }, err => {
-                        if (err) {
-                            console.log(err);
-                            out.write("error: 500 Internal Server Error");
-                        }
-
-                        out.write("OK");
-                    });
-                } else {
-                    out.write("error: program doesn't exist");
                 }
+                
+                // remove program from user's profile
+                users.updateOne({ id: data.userData.id }, {$pull: {
+                    projects: data.postData
+                }});
+
+                // delete program from storage
+                await programs.deleteOne({ id: data.postData });
+                out.write("OK");
             },
-            "like_program": (path, out, data) => {
+            "like_program": async (path, out, data) => {
                 // like program endpoint
                 if (!data.hasPermission) {
                     out.write("error: access denied");
                     return;
                 }
 
-                let programDataLoc = `./programs/${data.postData.charAt(0).toUpperCase()}/${data.postData}/a.json`;
                 try {
                     // get program data
-                    let programData = readJSON(programDataLoc);
+                    let programData = await programs.findOne({ id: data.postData });
 
                     // update program data
                     if (!programData.likes.includes(data.userData.id)) {
-                        programData.likes.push(data.userData.id);
+                        programs.updateOne({ id: data.postData }, {$push: {
+                            likes: data.userData.id
+                        }});
                     } else {
-                        programData.likes.splice(programData.likes.indexOf(data.userData.id), 1);
+                        programs.updateOne({ id: data.postData }, {$pull: {
+                            likes: data.userData.id
+                        }});
                     }
-
-                    // save program data
-                    fs.writeFileSync(programDataLoc, JSON.stringify(programData));
 
                     // update parent forks array
                     if (programData.parent !== null && programData.parent.length > 0) {
                         // parent directory path
-                        let parentDir = "./programs/" + programData.parent[0].toUpperCase() + "/" + programData.parent;
-        
-                        if (fs.existsSync(parentDir)) {
-                            let parentData = readJSON(parentDir + "/a.json");
-                            for (let i = 0; i < parentData.forks.length; i++) {
-                                let fork = parentData.forks[i];
+                        let parentProgram = await programs.findOne({ id: programData.parent });
+                        if (parentProgram !== null) {
+                            for (let i = 0; i < parentProgram.forks.length; i++) {
+                                let fork = parentProgram.forks[i];
                                 if (fork.id === programData.id) {
                                     fork.likeCount = programData.likes.length;
                                 }
                             }
-                            fs.writeFile(
-                                parentDir + "/a.json",
-                                JSON.stringify(parentData),
-                                () => { }
-                            );
+
+                            programs.updateOne({ id: programData.parent }, {$set: {
+                                forks: parentProgram.forks
+                            }});
                         }
                     }
                     out.write("200");
@@ -1257,7 +1138,7 @@ const projectTree = {
                     return;
                 }
             },
-            "update_profile": (path, out, data) => {
+            "update_profile": async (path, out, data) => {
                 // change nickname endpoint
                 let json = parseJSON(data.postData);
                 if (json === null) {
@@ -1295,35 +1176,29 @@ const projectTree = {
                     return;
                 }
 
-                let id = data.userData.id;
-                let directory = "./profiles/" + id.charAt(0).toUpperCase();
-                let profile = readJSON(`${directory}/${id}.json`);
+                const id = data.userData.id;
+                let updateQuery = {};
 
                 // update info
                 if (json.nickname) {
-                    profile.nickname = json.nickname;
+                    updateQuery.nickname = json.nickname;
                     userCredentials[id].nickname = json.nickname;
                 }
                 if (json.username) {
-                    profile.username = json.username;
+                    updateQuery.username = json.username;
                     userCredentials[id].username = json.username;
                 }
                 if (json.bio) {
-                    profile.bio = json.bio;
+                    updateQuery.bio = json.bio;
                 }
                 if (json.avatar) {
-                    profile.avatar = json.avatar;
+                    updateQuery.avatar = json.avatar;
                 }
                 if (json.background) {
-                    profile.background = json.background;
+                    updateQuery.background = json.background;
                 }
 
-                // save
-                fs.writeFile(
-                    `${directory}/${id}.json`,
-                    JSON.stringify(profile),
-                    () => { }
-                );
+                await users.updateOne({ id }, {$set: updateQuery});
 
                 out.write("OK");
             },
@@ -1362,8 +1237,7 @@ const projectTree = {
                 // invalidate token
                 let token = data.userToken;
                 let id = data.userData.id;
-                let directory = "./profiles/" + id.charAt(0).toUpperCase();
-                let profile = readJSON(`${directory}/${id}.json`);
+                let profile = await users.findOne({ id });
                 
                 // delete old tokens
                 let currTime = Date.now();
@@ -1377,12 +1251,10 @@ const projectTree = {
                 }
                 
                 // update profile in storage
-                fs.writeFile(
-                    `${directory}/${id}.json`,
-                    JSON.stringify(profile),
-                    () => { }
-                );
-
+                users.updateOne({ id }, {$set: {
+                    tokens: profile.tokens
+                }});
+ 
                 out.write("OK");
             },
         },
@@ -1411,7 +1283,7 @@ const projectTree = {
                 page *= 16;
                 out.write(JSON.stringify(list.slice(page, page + 16)));
             },
-            "getUserData?": (path, out, data) => {
+            "getUserData?": async (path, out, data) => {
                 var who = parseQuery("?" + path).who;
                 let foundUser = false;
 
@@ -1431,14 +1303,14 @@ const projectTree = {
                 }
 
                 if (foundUser) {
-                    out.write(fs.readFileSync(`./profiles/${who.id.charAt(0).toUpperCase()}/${who.id}.json`));
+                    out.write(JSON.stringify(await users.findOne({ id: who.id })));
                 } else {
                     out.write("404 Not Found"); // user not found
                 }
             },
         }
     },
-    "/CDN/": (path, out) => {
+    "/CDN/": async (path, out) => {
         // stop browsers from complaining about CORS issues
         out.setHeader("Access-Control-Allow-Origin", "*");
 
@@ -1462,11 +1334,28 @@ const projectTree = {
         }
 
         let fetchPath = "./" + path;
+        let dataOut = null;
 
-        if (fs.existsSync(fetchPath)) {
+        if (fetchPath.startsWith("./programs/")) {
+            if (fetchPath.endsWith(".json")) {
+                let id = fetchPath.slice("./programs/".length, fetchPath.length - ".json".length);
+                let programData = await programs.findOne({ id });
+                dataOut = JSON.stringify(programData);
+            } else if (fetchPath.endsWith(".jpg")) {
+                let id = fetchPath.slice("./programs/".length, fetchPath.length - ".jpg".length);
+                let programData = await programs.findOne({ id });
+                if (programData.thumbnail !== null) {
+                    dataOut = programData.thumbnail.buffer;
+                }
+            }
+        } else {
+            dataOut = fs.readFileSync(fetchPath);
+        }
+
+        if (dataOut !== null) {
             // send file
             out.writeHead(200, { "Content-Type": fileType + "/" + fileSubType });
-            out.write(fs.readFileSync(fetchPath));
+            out.write(dataOut);
         } else {
             out.write("404 Not Found");
         }
@@ -1543,6 +1432,16 @@ const server = http.createServer({key: secrets.key, cert: secrets.cert}, async (
         return response.end();
     }
 
+    // proxy the sandbox domain to the sandbox server
+    if (request.headers["host"].startsWith("sandbox.")) {
+        let res = await fetch("http://127.0.0.1:" + secrets.sandboxPort + request.url);
+        let buff = await res.arrayBuffer();
+        response.writeHead(200, res.headers);
+        response.write(Buffer.from(buff));
+        response.end();
+        return;
+    }
+
     // detect spam
     let hashedUserIP;
     if (response.req.headers["x-forwarded-for"]) {
@@ -1569,10 +1468,7 @@ const server = http.createServer({key: secrets.key, cert: secrets.cert}, async (
             // check against all user tokens
             for (let i = 0; i < user.tokens.length; i += 2) {
                 if (AES_decrypt(user.tokens[i + 1], process.env.MASTER_KEY).slice(16) === userToken) {
-                    let profilePath = `./profiles/${id.charAt(0).toUpperCase()}/${id}.json`;
-                    if (fs.existsSync(profilePath)) {
-                        userData = readJSON(profilePath);
-                    }
+                    userData = await users.findOne({ id });
                 }
             }
         }
@@ -1584,6 +1480,8 @@ const server = http.createServer({key: secrets.key, cert: secrets.cert}, async (
         if (url[url.length - 1] === "/") {
             url = url.slice(0, url.length - 1);
         }
+        // prevent people from accessing upstream files
+        url = url.replaceAll("../", "./").replaceAll("..\\", ".\\");
 
         // handle the request
         let status = await useTree(url, projectTree, { request, userData, userToken, hashedUserIP }, response);
@@ -1597,14 +1495,43 @@ const server = http.createServer({key: secrets.key, cert: secrets.cert}, async (
     }
 });
 
-// reset spam detection for IPs every minute
-setInterval(function() {
-    for (var ip in IP_monitor) {
-        IP_monitor[ip].requests = 0;
-    }
-}, 1000 * 60 * 1);
+async function main() {
+    await myMongo.connect();
+    
+    db = myMongo.db("vxsacademy");
+    users = db.collection("users");
+    programs = db.collection("programs");
+    salts = db.collection("salts");
 
-// lets light this candle!
-server.listen(3000, function() {
-    console.log("Server Online!");
-});
+    console.log("Connected to MongoDB!");
+
+    // load user credentials
+    {
+        const arr = await users.find({}).project({
+            nickname: 1,
+            username: 1,
+            password: 1,
+            tokens: 1,
+            id: 1,
+            _id: 0
+        }).toArray();
+    
+        for (let i = 0; i < arr.length; i++) {
+            let user = arr[i];
+            userCredentials[user.id] = user;
+        }
+    }
+    
+    // update browser projects the first time
+    await updateProjectLists();
+
+    // update browse projects every 10 minutes
+    setInterval(updateProjectLists, 1000 * 60 * 10);
+
+    // lets light this candle!
+    server.listen(secrets.port, function() {
+        console.log("HTTPS Server Online at https://127.0.0.1:" + secrets.port);
+    });
+}
+
+main().catch(console.error);

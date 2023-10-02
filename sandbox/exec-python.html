@@ -55,7 +55,9 @@ window.addEventListener("message", async function (event) {
                 });
             }
             pyodide.globals.set("input", async a => {
-                terminal.out(a);
+                if (a) {
+                    terminal.out(a);
+                }
                 return await terminal.in();
             });
 
@@ -67,6 +69,7 @@ window.addEventListener("message", async function (event) {
     }
 
     if (window.pyodide) {
+        warningsBox.innerHTML = "";
         start();
     } else {
         setTimeout(start, 32);
