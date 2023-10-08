@@ -4,12 +4,18 @@ An open source website where anyone can learn computer science for free and shar
 ## Running Locally
 Clone the repo.  
 You will then need to install all the npm modules.  
-VExcess Academy requires Node JS v15.8.0 or higher to run and the server can be started with `node index.js`.  
-You also need to assign values to the following variables in `src/index.js` or else the server will crash: `process.env.MASTER_KEY` and `process.env.RECAPTCHA_KEY`.  
+VExcess Academy requires Node JS v15.8.0 or higher to run.  
+The main server can be started using `node index.js` from `/src/`.  
+For the code editor to work you will also need to run the execution environment sandbox server located in `sandbox/index.js`. The sandbox server can be started using `node index.js` from `/sandbox/`.
+
+In `secrets.js` you will need to assign values to `MASTER_KEY`, `RECAPTCHA_KEY`, `key`, `cert`, `port`, `sandboxPort`, and `databaseURL`.  
 `MASTER_KEY` is the encryption key used to encrypt profiles and stuff.  
 `RECAPTCHA_KEY` is the key for validating the Google Recaptcha on the sign up page.  
-For the code editor to work you will also need to run the execution environment sandbox server located in `sandbox/index.js`.  
-You'll then need to change the URL in `src/pages/computer-programming/program.js` to use your localhost URL instead of the official one.  
+`key` is the SSL key used for HTTPS encryption. You don't need this if you change the code to use a plain HTTP server instead.  
+`cert` is the SSL certificate used for HTTPS encryption. You don't need this if you change the code to use a plain HTTP server instead.  
+`port` is an integer specifying which port to open the server on.  
+`sandboxPort` is an integer specifying which port to open the sandbox server on.  
+`databaseURL` is a string containing a URL on which the MongoDB instance is running.  
 
 ## Contributors
 [VExcess](https://github.com/vExcess) - I wrote nearly all the code  
