@@ -1,4 +1,149 @@
-const sandboxURL = "https://sandbox.vxsacademy.org";
+const sandboxURL = 
+    window.location.hostname === "vxsacademy.org" ?
+    "https://sandbox.vxsacademy.org" :
+    "http://127.0.0.1:3003";
+
+const PROGRAM_ID = window.location.pathname.split("/")[2];
+
+// load program info from server
+let programData = null;
+if (PROGRAM_ID === "new") {
+    // boilerplate code for new programs
+    const boilerplate = {
+        html: `
+            <!DOCTYPE html>
+            <html>
+                <head>
+                    <meta charset="utf-8">
+                    <title>New webpage</title>
+                    <link rel="stylesheet" href="./style.css">
+                </head>
+                <body>
+
+                    <script src="./index.js"></script>
+                
+                </body>
+            </html>
+        `,
+        java: `
+            class Main {
+                public static void main(String[] args) {
+                    
+                }
+            }
+        `,
+        cpp: `
+            #include <iostream>
+            using namespace std;
+            
+            int main() {
+                return 0;
+            }
+        `,
+        glsl: `
+            void mainImage(out vec4 fragColor, in vec2 fragCoord) {
+                // Normalized pixel coordinates (from 0 to 1)
+                vec2 uv = fragCoord / iResolution.xy;
+            
+                // Time varying pixel color
+                vec3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0,2,4));
+            
+                // Output to screen
+                fragColor = vec4(col,1.0);
+            }
+        `
+    };
+
+    // clean up boilerplates
+    let boilerplateKeys = Object.keys(boilerplate);
+    let b, i, j, key, code, minIndent, lines;
+    for (b = 0; b < boilerplateKeys.length; b++) {
+        key = boilerplateKeys[b];
+        code = boilerplate[key];
+        minIndent = Infinity;
+        lines = code.split("\n");
+        lines = lines.slice(1, lines.length - 1);
+        for (i = 0; i < lines.length; i++) {
+            if (lines[i].trim().length > 0) {
+                j = 0;
+                while (lines[i][j] === " " && j < lines[i].length) {
+                    j++;
+                }
+                if (j < minIndent) {
+                    minIndent = j;
+                }
+            }
+        }
+        for (i = 0; i < lines.length; i++) {
+            lines[i] = lines[i].slice(minIndent);
+        }
+        boilerplate[key] = lines.join("\n");
+    }
+
+    programData = {
+        title: "New Program",
+        files: {},
+        fileNames: [],
+        width: 400,
+        height: 400,
+        programType: window.location.pathname.split("/")[3]
+    };
+
+    // setup files
+    switch (programData.programType) {
+        case "webpage":
+            programData.type = "html";
+            programData.fileNames = ["index.html", "index.js", "style.css"];
+            programData.files["index.html"] = boilerplate.html;
+            programData.files["index.js"] = "// JavaScript";
+            programData.files["style.css"] = "/* CSS */";
+            break;
+            
+        case "pjs":
+            programData.type = "pjs";
+            programData.fileNames = ["index.js"];
+            programData.files["index.js"] = "// Processing.js";
+            break;
+
+        case "python":
+            programData.type = "python";
+            programData.fileNames = ["main.py"];
+            programData.files["main.py"] = "# Python";
+            break;
+
+        case "glsl":
+            programData.type = "glsl";
+            programData.fileNames = ["image.glsl"];
+            programData.files["image.glsl"] = boilerplate.glsl;
+            break;
+
+        case "jitlang":
+            programData.type = "jitlang";
+            programData.fileNames = ["main.jitl"];
+            programData.files["main.jitl"] = "// JITLang";
+            break;
+
+        case "cpp":
+            programData.type = "cpp";
+            programData.fileNames = ["main.cpp"];
+            programData.files["main.cpp"] = boilerplate.cpp;
+            break;
+
+        case "java":
+            programData.type = "java";
+            programData.fileNames = ["Main.java"];
+            programData.files["Main.java"] = boilerplate.java;
+            break;                    
+    }
+
+    setTimeout(main, 0);
+} else {
+    $.getJSON(`/CDN/programs/${PROGRAM_ID}.json`).then(data => {
+        programData = data;
+        main();
+    });
+}
+
 
 // set program title
 let programTitleEl = $("#program-title").$("*span")[0];
@@ -7,7 +152,7 @@ function setProgramTitle (title) {
     programData.title = title;
     programTitleEl.text(title);
 }
-setProgramTitle(programData.title);
+
 editTitleBtn.on("click", () => {
     let title = window.prompt("Enter a new title:", "New Program");
     if (title.length === 0) title = "New Program";
@@ -16,8 +161,8 @@ editTitleBtn.on("click", () => {
 
 // the editor settings
 let editorSettings = {
-    width: programData.width,
-    height: programData.height,
+    width: 400,
+    height: 400,
     indentSize: 4,
     fontSize: 13,
     theme: "vs-dark",
@@ -58,9 +203,11 @@ autoRefreshEl.on("change", () => {
 
 // models and stuff
 const models = {};
-let fileNames = programData.fileNames;
+let fileNames = null;
 let currFileName, currModel;
 let editor = null;
+
+
 
 // setup output frame sandbox
 outputFrame.attr({
@@ -85,7 +232,7 @@ loadIcon.css({
 });
 editorContainer.append(loadIcon);
 
-const localStorageKey = "cs-new-program-" + (userData === null ? "null" : userData.id) + "-" + programData.type;
+let localStorageKey = null;
 
 let expectingSave = false;
 function saveProgram() {
@@ -355,7 +502,7 @@ function confirmLeavePage () {
     }
 }
 
-function runProgram () {
+function runProgram() {
     ifrWin.postMessage("ping", "*");
     
     var mainCode;
@@ -518,168 +665,6 @@ topBtn.on("click", e => {
     }
 });
 
-if (programData.id) {
-    if (!userData) {
-        saveButtonEL.css("display: none");
-    }
-    if (userData && programData.author.id !== userData.id) {
-        saveButtonEL.$("*span")[0].innerText = "Fork";
-    }
-
-    if (typeof programData.parent === "string" && programData.parent.length > 0) {
-        let parentLinkEl = $("#forked-from")
-            .html("Forked From: ");
-        fetch(`/CDN/programs/${programData.parent}.json`)
-            .then(res => res.json())
-            .then(res => {
-                parentLinkEl.append(
-                    $("a")
-                        .css({
-                            textDecoration: "none",
-                            color: "rgb(0, 140, 60)"
-                        })
-                        .text(res.title)
-                        .attr({
-                            href: "/computer-programming/" + res.id
-                        })
-                );
-            })
-            .catch(() => {
-                parentLinkEl.textContent += "Deleted Program";
-            })
-    }
-
-    let programAuthorEl = $("#program-author")
-        .html("Created By: ")
-        .append(
-            $("a")
-                .css({
-                    textDecoration: "none",
-                    color: "rgb(0, 140, 60)"
-                })
-                .text(programData.author.nickname)
-                .attr({
-                    target: "_blank",
-                    href: "/profile/id_" + programData.author.id
-                })
-        );
-    programAuthorEl.innerHTML += " (Updated " + timeSince(programData.lastSaved - 30 * 1000) + " ago)";
-
-    $("#program-hidden").text("Hidden: No");
-    $("#program-created").text("Created: " + new Date(programData.created).toLocaleString('en-US', { timeZone: 'UTC' }));
-    $("#program-updated").text("Updated: " + new Date(programData.lastSaved).toLocaleString('en-US', { timeZone: 'UTC' }));
-}
-
-if (programData.author) {
-    if (!userData || (programData.author.id !== userData.id)) {
-        $("#delete-program-button").remove();
-        editTitleBtn.remove();
-    }
-
-    // like button stuff
-    let likeProgramBtn = $("#like-program-button");
-    
-    // set like button content
-    likeProgramBtn.$("*span")[0].text(userData && programData.hasLiked ? "Liked!" : "Like");
-    likeProgramBtn.$("*span")[1].text(" · " + programData.likeCount);
-    
-    // handle like button click
-    likeProgramBtn.on("click", () => {
-        if (!userData) {
-            alert("You must be logged in to like a program");
-            return;
-        }
-
-        if (programData.hasLiked) {
-            likeProgramBtn.$("*span")[0].text("Unliking...");
-        } else {
-            likeProgramBtn.$("*span")[0].text("Liking...");
-        }
-        likeProgramBtn.disabled = true;
-        
-        fetch("/API/like_program", {
-            method: "POST",
-            body: window.location.href.split("/")[4]
-        }).then(res => res.text()).then(function (res) {
-            if (res.includes("error")) {
-                alert(res);
-            } else if (res === "200") {
-                if (programData.hasLiked) {
-                    programData.likeCount--; // unlike the program
-                    programData.hasLiked = false;
-                } else {
-                    programData.likeCount++; // like the program
-                    programData.hasLiked = true;
-                }
-                
-                // set like button content
-                likeProgramBtn.$("*span")[0].text(userData && programData.hasLiked ? "Liked!" : "Like");
-                likeProgramBtn.$("*span")[1].text(" · " + programData.likeCount);
-            }
-        });
-
-        setTimeout(() => {
-            likeProgramBtn.disabled = false;
-        }, 5000);
-    });
-
-    // handle delete button click
-    deleteButtonEL.on("click", () => {
-        if (confirm("Are you sure you want to delete this project? This cannot be undone!") === true) {
-            fetch("/API/delete_program", {
-                method: "POST",
-                body: window.location.href.split("/")[4]
-            }).then(res => res.text()).then(function (res) {
-                if (res.includes("error")) {
-                    alert(res);
-                } else {
-                    window.location.href = "/computer-programming/";
-                }
-            });
-        }
-    });
-} else {
-    $("#like-program-button").remove();
-    $("#delete-program-button").remove();
-    $("#report-program-button").remove();
-}
-
-// about/forks/docs/help tabs
-let selectedTab = 0;
-let tabs = $(".tab-tab");
-let tabPages = $("#tab-content").$(".tab-page");
-
-tabs[selectedTab].style.borderBottom = "5px solid rgb(31, 171, 84)";
-tabPages[selectedTab].style.display = "block";
-
-for (let i = 0; i < tabs.length; i++) {
-    tabs[i].on("mouseenter", () => {
-        if (i !== selectedTab) {
-            tabs[i].style.borderBottom = "5px solid rgb(230, 230, 230)";
-        }
-    });
-    tabs[i].on("mouseleave", () => {
-        if (i !== selectedTab) {
-            tabs[i].style.borderBottom = "5px solid transparent";
-        }
-    });
-    tabs[i].on("click", () => {
-        selectedTab = i;
-        for (let j = 0; j < tabs.length; j++) {
-            tabs[j].style.borderBottom = "5px solid transparent";
-            tabPages[j].style.display = "none";
-        }
-        tabs[i].style.borderBottom = "5px solid rgb(31, 171, 84)";
-        tabPages[i].style.display = "block";
-
-        switch (i) {
-            case 1: {
-                changeSort(forksSort);
-            }
-        }
-    });
-}
-
 // to make the page responsive
 function resizePage () {
     outputFrame.width = editorSettings.width;
@@ -698,19 +683,146 @@ function resizePage () {
     }
 }
 
-// size the webpage
-resizePage();
-
 // resize if the window size is changed
 window.addEventListener('resize', resizePage, true);
 
-// Monaco setup
-require.config({
-   paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor/min/vs" }
-});
+function main() {
+    setProgramTitle(programData.title);
+    editorSettings.width = programData.width;
+    editorSettings.height = programData.height;
+    fileNames = programData.fileNames;
+    localStorageKey = "cs-new-program-" + (userData === null ? "null" : userData.id) + "-" + programData.type;
 
-// Monaco init
-require(["vs/editor/editor.main"], () => {    
+    if (programData.id) {
+        if (!userData) {
+            saveButtonEL.css("display: none");
+        }
+        if (userData && programData.author.id !== userData.id) {
+            saveButtonEL.$("*span")[0].innerText = "Fork";
+        }
+    
+        if (typeof programData.parent === "string" && programData.parent.length > 0) {
+            let parentLinkEl = $("#forked-from")
+                .html("Forked From: ");
+            $.getJSON(`/CDN/programs/${programData.parent}.json`)
+                .then(res => {
+                    parentLinkEl.append(
+                        $("a")
+                            .css({
+                                textDecoration: "none",
+                                color: "rgb(0, 140, 60)"
+                            })
+                            .text(res.title)
+                            .attr({
+                                href: "/computer-programming/" + res.id
+                            })
+                    );
+                })
+                .catch(() => {
+                    parentLinkEl.textContent += "Deleted Program";
+                })
+        }
+    
+        let programAuthorEl = $("#program-author")
+            .html("Created By: ")
+            .append(
+                $("a")
+                    .css({
+                        textDecoration: "none",
+                        color: "rgb(0, 140, 60)"
+                    })
+                    .text(programData.author.nickname)
+                    .attr({
+                        target: "_blank",
+                        href: "/profile/id_" + programData.author.id
+                    })
+            );
+        programAuthorEl.innerHTML += " (Updated " + timeSince(programData.lastSaved - 30 * 1000) + " ago)";
+    
+        $("#program-hidden").text("Hidden: No");
+        $("#program-created").text("Created: " + new Date(programData.created).toLocaleString('en-US', { timeZone: 'UTC' }));
+        $("#program-updated").text("Updated: " + new Date(programData.lastSaved).toLocaleString('en-US', { timeZone: 'UTC' }));
+    }
+    
+    if (programData.author) {
+        if (!userData || (programData.author.id !== userData.id)) {
+            $("#delete-program-button").remove();
+            editTitleBtn.remove();
+        }
+    
+        // like button stuff
+        let likeProgramBtn = $("#like-program-button");
+        
+        // set like button content
+        likeProgramBtn.$("*span")[0].text(userData && programData.hasLiked ? "Liked!" : "Like");
+        likeProgramBtn.$("*span")[1].text(" · " + programData.likeCount);
+        
+        // handle like button click
+        likeProgramBtn.on("click", () => {
+            if (!userData) {
+                alert("You must be logged in to like a program");
+                return;
+            }
+    
+            if (programData.hasLiked) {
+                likeProgramBtn.$("*span")[0].text("Unliking...");
+            } else {
+                likeProgramBtn.$("*span")[0].text("Liking...");
+            }
+            likeProgramBtn.disabled = true;
+            
+            fetch("/API/like_program", {
+                method: "POST",
+                body: window.location.href.split("/")[4]
+            }).then(res => res.text()).then(function (res) {
+                if (res.includes("error")) {
+                    alert(res);
+                } else if (res === "200") {
+                    if (programData.hasLiked) {
+                        programData.likeCount--; // unlike the program
+                        programData.hasLiked = false;
+                    } else {
+                        programData.likeCount++; // like the program
+                        programData.hasLiked = true;
+                    }
+                    
+                    // set like button content
+                    likeProgramBtn.$("*span")[0].text(userData && programData.hasLiked ? "Liked!" : "Like");
+                    likeProgramBtn.$("*span")[1].text(" · " + programData.likeCount);
+                }
+            });
+    
+            setTimeout(() => {
+                likeProgramBtn.disabled = false;
+            }, 5000);
+        });
+    
+        // handle delete button click
+        deleteButtonEL.on("click", () => {
+            if (confirm("Are you sure you want to delete this project? This cannot be undone!") === true) {
+                fetch("/API/delete_program", {
+                    method: "POST",
+                    body: window.location.href.split("/")[4]
+                }).then(res => res.text()).then(function (res) {
+                    if (res.includes("error")) {
+                        alert(res);
+                    } else {
+                        window.location.href = "/computer-programming/";
+                    }
+                });
+            }
+        });
+    } else {
+        $("#like-program-button").remove();
+        $("#delete-program-button").remove();
+        $("#report-program-button").remove();
+    }
+
+    // size the webpage
+    resizePage();
+}
+
+function main2() {
     function createModel (fileName) {
         let type = fileName.split(".").reverse()[0];
         
@@ -814,45 +926,6 @@ require(["vs/editor/editor.main"], () => {
 
     // customize editor
     monaco.editor.setTheme("vs-dark");
-
-    // run code live
-    editor.onDidChangeModelContent(() => {
-        if (autoRefresh) {
-            if (!["java", "cpp"].includes(programData.type)) {
-                runProgram();
-            }
-        }
-    });
-
-    // run shortcut
-    editor.addAction({
-    	id: "run-shortcut",
-    	label: "Run Shortcut",
-    	keybindings: [
-    		monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter
-    	],
-    	precondition: null,
-    	keybindingContext: null,
-    	contextMenuGroupId: "navigation",
-    	contextMenuOrder: 1.5,
-    	run: runProgram
-    });
-
-    // save shortcut
-    editor.addAction({
-    	id: "save-shortcut",
-    	label: "Save Shortcut",
-    	keybindings: [
-    		monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS
-    	],
-    	precondition: null,
-    	keybindingContext: null,
-    	contextMenuGroupId: "navigation",
-    	contextMenuOrder: 1.5,
-    	run: () => {
-            saveButtonEL.click();
-        }
-    });
 
     // keep track of mouse presses for scrubber
     let mouseX = 0;
@@ -1292,11 +1365,50 @@ require(["vs/editor/editor.main"], () => {
         currModel.setValue(getFile(currFileName));
 
         updateCurrModel();
+
+        // run code live
+        editor.onDidChangeModelContent(() => {
+            if (autoRefresh) {
+                if (!["java", "cpp"].includes(programData.type)) {
+                    runProgram();
+                }
+            }
+        });
+
+        // run shortcut
+        editor.addAction({
+            id: "run-shortcut",
+            label: "Run Shortcut",
+            keybindings: [
+                monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter
+            ],
+            precondition: null,
+            keybindingContext: null,
+            contextMenuGroupId: "navigation",
+            contextMenuOrder: 1.5,
+            run: runProgram
+        });
+
+        // save shortcut
+        editor.addAction({
+            id: "save-shortcut",
+            label: "Save Shortcut",
+            keybindings: [
+                monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS
+            ],
+            precondition: null,
+            keybindingContext: null,
+            contextMenuGroupId: "navigation",
+            contextMenuOrder: 1.5,
+            run: () => {
+                saveButtonEL.click();
+            }
+        });
     }
 
     // load program if it's not a new program
     if (programData.id) {
-        fetch(`/CDN/programs/${programData.id}.json`).then(res => res.json()).then(json => {
+        $.getJSON(`/CDN/programs/${programData.id}.json`).then(json => {
             programData.files = json.files;
 
             const whitelist = [
@@ -1504,4 +1616,57 @@ require(["vs/editor/editor.main"], () => {
         nameEl.focus();
         nameEl.select();
     });
+}
+
+// about/forks/docs/help tabs
+let selectedTab = 0;
+let tabs = $(".tab-tab");
+let tabPages = $("#tab-content").$(".tab-page");
+
+tabs[selectedTab].style.borderBottom = "5px solid rgb(31, 171, 84)";
+tabPages[selectedTab].style.display = "block";
+
+for (let i = 0; i < tabs.length; i++) {
+    tabs[i].on("mouseenter", () => {
+        if (i !== selectedTab) {
+            tabs[i].style.borderBottom = "5px solid rgb(230, 230, 230)";
+        }
+    });
+    tabs[i].on("mouseleave", () => {
+        if (i !== selectedTab) {
+            tabs[i].style.borderBottom = "5px solid transparent";
+        }
+    });
+    tabs[i].on("click", () => {
+        selectedTab = i;
+        for (let j = 0; j < tabs.length; j++) {
+            tabs[j].style.borderBottom = "5px solid transparent";
+            tabPages[j].style.display = "none";
+        }
+        tabs[i].style.borderBottom = "5px solid rgb(31, 171, 84)";
+        tabPages[i].style.display = "block";
+
+        switch (i) {
+            case 1: {
+                changeSort(forksSort);
+            }
+        }
+    });
+}
+
+// Monaco setup
+require.config({
+   paths: { vs: "https://cdn.jsdelivr.net/npm/monaco-editor/min/vs" }
+});
+
+// Monaco init
+require(["vs/editor/editor.main"], () => {
+    function waitTillReady() {
+        if (programData === null) {
+            setTimeout(waitTillReady, 100);
+        } else {
+            main2();
+        }
+    }
+    waitTillReady();
 });

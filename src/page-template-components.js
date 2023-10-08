@@ -8,7 +8,7 @@ $.createComponent("program-element", $.html`
             <img src="/CDN/images/language-icons/\{type}.png" height="45">
             <div style="margin-left: .3rem;">
                 <div class="program_metadata-wrapper">
-                    <span class="program_likes">\{likes.length}</span>
+                    <span class="program_likes">\{likeCount}</span>
                     <span class="program_likes-title">Likes</span>
                     <span> · </span>
                     <span class="program_forks">\{forks.length}</span>

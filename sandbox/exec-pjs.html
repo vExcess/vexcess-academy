@@ -95,10 +95,12 @@ var getImage = function (file) {
     if (PImageCache.images[file]) {
         pimg = new processingInstance.PImage(PImageCache.images[file]);
         pimg.loaded = true;
+        Process.preload.imagesLoaded++;
     } else if (Process.imageCache[file]) {
         PImageCache.add(file, Process.imageCache[file]);
         pimg = new processingInstance.PImage(PImageCache.images[file]);
         pimg.loaded = true;
+        Process.preload.imagesLoaded++;
     } else {
         let img = new Image();
         img.crossOrigin = "Anonymous";
@@ -214,7 +216,7 @@ processingInstance.Program = {
 processingInstance.debug = console.log;
 
 let runStartInterval = setInterval(function() {
-    if (Process.preload.imagesLoaded === Process.preload.imagesExpected) {
+    if (Process.preload.imagesLoaded >= Process.preload.imagesExpected) {
         clearInterval(runStartInterval);
 
         with (processingInstance) {
@@ -234,6 +236,8 @@ let runStartInterval = setInterval(function() {
         if (typeof mousePressed !== 'undefined') processingInstance.mousePressed = mousePressed;
         if (typeof mouseMoved !== 'undefined') processingInstance.mouseMoved = mouseMoved;
         if (typeof mouseOver !== 'undefined') processingInstance.mouseOver = mouseOver;
+    } else {
+        console.log(Process.preload.imagesLoaded, Process.preload.imagesExpected)
     }
 });
         `
@@ -311,7 +315,9 @@ let runStartInterval = setInterval(function() {
             liveOutputContainer.append(liveOutputCanvas);
             
             // create new Processing instance
-            Process.processingInstance = new Processing(liveOutputCanvas, inst => inst.draw = ()=>{});
+            Process.processingInstance = new Processing(liveOutputCanvas, inst => {
+                inst.draw = () => {};
+            });
             
             Process.width = data.width;
             Process.height = data.height;

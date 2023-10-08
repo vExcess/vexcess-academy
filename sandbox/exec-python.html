@@ -18,6 +18,8 @@
     <script>
 let terminal = new Terminal(document.getElementById("live-output-container"));
 
+const wait = () => new Promise(resolve => setTimeout(resolve, 1000));
+
 window.addEventListener("message", async function (event) {
     if (event.data === "ping") {
         window.top.postMessage({
@@ -38,22 +40,14 @@ window.addEventListener("message", async function (event) {
     let files = data.files;
     let mainCode = files["main.py"];
 
+    
     function start() {
         if (!window.pyodide) {
             return setTimeout(start, 32);
         }
-        
-        liveOutputContainer.style.width = data.width + "px";
-        liveOutputContainer.style.height = data.height + "px";
-        liveOutputContainer.innerHTML = "";
-        
+                
         // lets light this candle
         try {
-            function wait(){
-                return new Promise(resolve => {
-                    setTimeout(resolve, 1000);
-                });
-            }
             pyodide.globals.set("input", async a => {
                 if (a) {
                     terminal.out(a);
@@ -62,18 +56,18 @@ window.addEventListener("message", async function (event) {
             });
 
             let code = "async def __main__():\n    abs(0)\n" + mainCode.split("\n").map(s => "    " + s).join("\n").replaceAll("input(", "await input(") + "\n__main__()";
+            
+            warningsBox.innerHTML = "";
+            liveOutputContainer.style.width = data.width + "px";
+            liveOutputContainer.style.height = data.height + "px";
+            liveOutputContainer.innerHTML = "";
+            
             pyodide.runPython(code);
         } catch (err) {
             terminal.err(err.toString());
         }
     }
-
-    if (window.pyodide) {
-        warningsBox.innerHTML = "";
-        start();
-    } else {
-        setTimeout(start, 32);
-    }
+    start();
 });
 
 terminal.out("Installing Python...");
@@ -96,10 +90,7 @@ async function initPyodide() {
     });
 
     liveOutputContainer.innerHTML = "";
-    pyodide.runPython(`
-        import sys
-        sys.version
-    `);
+    pyodide.runPython("import sys\nsys.version");
 };
 initPyodide();
     </script>

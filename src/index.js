@@ -356,51 +356,6 @@ setInterval(function() {
     }
 }, 1000 * 60 * 1);
 
-// boilerplate code for new programs
-const boilerplate = {
-    html: `
-        <!DOCTYPE html>
-        <html>
-            <head>
-                <meta charset="utf-8">
-                <title>New webpage</title>
-                <link rel="stylesheet" href="./style.css">
-            </head>
-            <body>
-
-                <script src="./index.js"></script>
-            
-            </body>
-        </html>
-    `,
-    java: `
-        class Main {
-            public static void main(String[] args) {
-                
-            }
-        }
-    `,
-    cpp: `
-        #include <iostream>
-        using namespace std;
-        
-        int main() {
-            return 0;
-        }
-    `,
-    glsl: `
-        void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-            // Normalized pixel coordinates (from 0 to 1)
-            vec2 uv = fragCoord / iResolution.xy;
-        
-            // Time varying pixel color
-            vec3 col = 0.5 + 0.5 * cos(iTime + uv.xyx + vec3(0,2,4));
-        
-            // Output to screen
-            fragColor = vec4(col,1.0);
-        }
-    `
-};
 
 const DEFAULT_OG_TAGS = `
     <meta content="VExcess Academy" property="og:title" />
@@ -408,33 +363,6 @@ const DEFAULT_OG_TAGS = `
     <meta content="/CDN/images/logo.png#a" property="og:image" />
 `;
 
-// clean up boilerplates
-{
-    let boilerplateKeys = Object.keys(boilerplate);
-    let b, i, j, key, code, minIndent, lines;
-    for (b = 0; b < boilerplateKeys.length; b++) {
-        key = boilerplateKeys[b];
-        code = boilerplate[key];
-        minIndent = Infinity;
-        lines = code.split("\n");
-        lines = lines.slice(1, lines.length - 1);
-        for (i = 0; i < lines.length; i++) {
-            if (lines[i].trim().length > 0) {
-                j = 0;
-                while (lines[i][j] === " " && j < lines[i].length) {
-                    j++;
-                }
-                if (j < minIndent) {
-                    minIndent = j;
-                }
-            }
-        }
-        for (i = 0; i < lines.length; i++) {
-            lines[i] = lines[i].slice(minIndent);
-        }
-        boilerplate[key] = lines.join("\n");
-    }
-}
 
 class FileCache {
     files = new Map();
@@ -638,69 +566,6 @@ const projectTree = {
             if (["webpage", "pjs", "python", "glsl", "jitlang", "cpp", "java"].includes(programType)) {
                 let webpageCode = createHTMLPage("program", data.userData, DEFAULT_OG_TAGS);
 
-                let programData = {
-                    title: "New Program",
-                    files: {},
-                    fileNames: [],
-                    width: 400,
-                    height: 400
-                };
-
-                // setup files
-                switch (programType) {
-                    case "webpage":
-                        programData.type = "html";
-                        programData.fileNames = ["index.html", "index.js", "style.css"];
-                        programData.files["index.html"] = unicodeEscape(boilerplate.html, dontEscapeChars);
-                        programData.files["index.js"] = unicodeEscape("// JavaScript", dontEscapeChars);
-                        programData.files["style.css"] = unicodeEscape("/* CSS */", dontEscapeChars);
-                        break;
-                        
-                    case "pjs":
-                        programData.type = "pjs";
-                        programData.fileNames = ["index.js"];
-                        programData.files["index.js"] = "// Processing.js";
-                        break;
-
-                    case "python":
-                        programData.type = "python";
-                        programData.fileNames = ["main.py"];
-                        programData.files["main.py"] = "# Python";
-                        break;
-
-                    case "glsl":
-                        programData.type = "glsl";
-                        programData.fileNames = ["image.glsl"];
-                        programData.files["image.glsl"] = boilerplate.glsl;
-                        break;
-
-                    case "jitlang":
-                        programData.type = "jitlang";
-                        programData.fileNames = ["main.jitl"];
-                        programData.files["main.jitl"] = "// JITLang";
-                        break;
-
-                    case "cpp":
-                        programData.type = "cpp";
-                        programData.fileNames = ["main.cpp"];
-                        programData.files["main.cpp"] = boilerplate.cpp;
-                        break;
-
-                    case "java":
-                        programData.type = "java";
-                        programData.fileNames = ["Main.java"];
-                        programData.files["Main.java"] = boilerplate.java;
-                        break;                    
-                }
-
-                // insert data into page
-                webpageCode = webpageCode.replace(
-                    "insert-page-data",
-                    JSON.stringify({
-                        programData: programData
-                    }, "", "  ").replaceAll("\\\\u", "\\u")
-                );
-
                 out.writeHead(200, { 'Content-Type': 'text/html' });
                 out.write(webpageCode);
             }
@@ -714,21 +579,11 @@ const projectTree = {
                     // exit if program
                     return out.write("500");
                 } else {
-                    // hide sensitive data from front end
-                    programData.likeCount = programData.likes.length;
-                    if (data.userData && programData.likes.includes(data.userData.id)) {
-                        programData.hasLiked = true;
-                    }
-                    delete programData.likes;
-                    
                     let webpageCode = createHTMLPage("program", data.userData, `
                         <meta content="${programData.title.replaceAll('"', '\\"')}" property="og:title" />
                         <meta content="Made by ${programData.author.nickname.replaceAll('"', '\\"')}" property="og:description" />
                         <meta content="/CDN/programs/${programData.id[0].toUpperCase()}/${programData.id}/i.jpg#a" property="og:image" />
                     `);
-                    webpageCode = webpageCode.replace("insert-page-data", JSON.stringify({
-                        programData: programData
-                    }, "", "  ").replaceAll("</", "<\\/"));
 
                     out.writeHead(200, { "Content-Type": "text/html" });
                     out.write(webpageCode);
@@ -974,12 +829,12 @@ const projectTree = {
                     }
 
                     // add program to user's profile
-                    users.updateOne({ id: programData.author.id }, {$push: {
+                    await users.updateOne({ id: programData.author.id }, {$push: {
                         projects: programData.id
                     }});
 
                     // save program to database
-                    programs.insertOne(programData);
+                    await programs.insertOne(programData);
                 }
 
                 // send program id to user
@@ -1281,7 +1136,16 @@ const projectTree = {
                 }
 
                 page *= 16;
-                out.write(JSON.stringify(list.slice(page, page + 16)));
+
+                // expensive and dirty way to hide data from front end. refine this later
+                let listClone = structuredClone(list.slice(page, page + 16));
+                for (let i = 0; i < listClone.length; i++) {
+                    // hide sensitive data from front end
+                    listClone[i].likeCount = listClone[i].likes.length;
+                    delete listClone[i].likes;
+                }
+
+                out.write(JSON.stringify(listClone));
             },
             "getUserData?": async (path, out, data) => {
                 var who = parseQuery("?" + path).who;
@@ -1310,7 +1174,7 @@ const projectTree = {
             },
         }
     },
-    "/CDN/": async (path, out) => {
+    "/CDN/": async (path, out, data) => {
         // stop browsers from complaining about CORS issues
         out.setHeader("Access-Control-Allow-Origin", "*");
 
@@ -1340,11 +1204,21 @@ const projectTree = {
             if (fetchPath.endsWith(".json")) {
                 let id = fetchPath.slice("./programs/".length, fetchPath.length - ".json".length);
                 let programData = await programs.findOne({ id });
-                dataOut = JSON.stringify(programData);
+                
+                if (programData !== null) {
+                    // hide sensitive data from front end
+                    programData.likeCount = programData.likes.length;
+                    if (data.userData && programData.likes.includes(data.userData.id)) {
+                        programData.hasLiked = true;
+                    }
+                    delete programData.likes;
+
+                    dataOut = JSON.stringify(programData);
+                }
             } else if (fetchPath.endsWith(".jpg")) {
                 let id = fetchPath.slice("./programs/".length, fetchPath.length - ".jpg".length);
                 let programData = await programs.findOne({ id });
-                if (programData.thumbnail !== null) {
+                if (typeof programData.thumbnail === "object" && programData.thumbnail !== null) {
                     dataOut = programData.thumbnail.buffer;
                 }
             }
@@ -1535,3 +1409,22 @@ async function main() {
 }
 
 main().catch(console.error);
+
+// const { spawn } = require("child_process");
+// const sandboxThread = spawn("node", ["../sandbox/index.js"]);
+
+// sandboxThread.stdout.on("data", data => {
+//     console.log(`stdout: ${data}`);
+// });
+
+// sandboxThread.stderr.on("data", data => {
+//     console.log(`stderr: ${data}`);
+// });
+
+// sandboxThread.on("error", error => {
+//     console.log(`error: ${error.message}`);
+// });
+
+// sandboxThread.on("close", code => {
+//     console.log(`child process exited with code ${code}`);
+// });
