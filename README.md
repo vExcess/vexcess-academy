@@ -1,3 +1,6 @@
+# NOTE
+This repo has been moved to [https://github.com/vexcess-academy/vxsacademy](https://github.com/vexcess-academy/vxsacademy)
+
 # VExcess Academy
 An open source website where anyone can learn computer science for free and share programs in various languages with the community.
 
