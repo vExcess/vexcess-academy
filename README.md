@@ -1,6 +1,8 @@
 # VExcess Academy
 An open source website where anyone can learn computer science for free and share programs in various languages with the community.
 
+![screenshot](https://github.com/vExcess/vexcess-academy/blob/master/screenshot.jpg?raw=true)
+
 ## Running Locally
 Clone the repo.  
 You will then need to install all the npm modules.  
